@@ -581,7 +581,7 @@ export default function App() {
           crossDist -= 0.07; 
         }
         // KOREKTA: Narożnik wydłuża odległość dokładnie o długość swojego ramienia, a nie szerokość szafki
-        runDist += safeW2 - cab.d; 
+        runDist += safeW2 - cab.d;
       }
     });
     return result;
@@ -837,7 +837,7 @@ export default function App() {
                      ) : (
                        <mesh position={[0, cab.h + 0.119, cab.reverseFront ? -wtCenterZ : wtCenterZ]}>
                          <boxGeometry args={[cab.w + 0.001, 0.038, worktopDepth]} />
-                         {/* Blaty zwykłych szafek (NAPRAWIONE: zmieniony znak na PLUS dla idealnego zgrania słojów) */}
+                         {/* Blaty szafek (Fizyczny nawis + idealna kompensacja tekstury) */}
                          <PłytaMaterial 
                            dekor={DEKORY[worktopDecor]} 
                            w={cab.w} 
