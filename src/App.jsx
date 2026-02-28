@@ -726,34 +726,60 @@ export default function App() {
             </label>
           </div>
 
-          <div style={{ marginBottom: '15px' }}><label>Szerokość sekcji {activeCab.type === 'naroznik' && '(Ramię 1)'}: <b>{Math.round(activeCab.w*100)} cm</b></label><input type="range" min="0.15" max="1.5" step="0.05" value={activeCab.w} onChange={(e) => updateActiveCab({w: parseFloat(e.target.value)})} style={{ width: '100%' }} /></div>
+          <div style={{ marginBottom: '15px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '4px' }}>
+              <label>Szerokość sekcji {activeCab.type === 'naroznik' && '(Ramię 1)'}: <b>
+                {activeCab.type === 'naroznik' 
+                  ? Math.round((activeCab.w - 0.5 + (activeCab.d2 || 0.5)) * 100) 
+                  : Math.round(activeCab.w * 100)} cm
+              </b></label>
+              {activeCab.type === 'naroznik' && <span style={{ fontSize: '11px', color: '#d35400', fontWeight: 'bold' }}>Front: {Math.round((activeCab.w - 0.5)*100)} cm</span>}
+            </div>
+            <input type="range" min="0.15" max="1.5" step="0.05" 
+              value={activeCab.type === 'naroznik' ? activeCab.w - 0.5 + (activeCab.d2 || 0.5) : activeCab.w} 
+              onChange={(e) => {
+                const val = parseFloat(e.target.value);
+                if (activeCab.type === 'naroznik') {
+                  updateActiveCab({w: val - (activeCab.d2 || 0.5) + 0.5});
+                } else {
+                  updateActiveCab({w: val});
+                }
+              }} 
+              style={{ width: '100%' }} 
+            />
+          </div>
           
           {activeCab.type !== 'puste' && (
             <>
-              <div style={{ marginBottom: '15px' }}><label>Głębokość {activeCab.type === 'naroznik' && '(Ramię 1)'}: <b>{Math.round(activeCab.d*100)} cm</b></label>
-  <input type="range" min="0.3" max="0.7" step="0.01" value={activeCab.d} onChange={(e) => {
-    const newVal = parseFloat(e.target.value);
-    if (activeCab.type === 'naroznik') {
-      const diff = newVal - activeCab.d;
-      updateActiveCab({ d: newVal, w2: parseFloat(((activeCab.w2 || 0.9) + diff).toFixed(2)) });
-    } else {
-      updateActiveCab({ d: newVal });
-    }
-  }} style={{ width: '100%' }} />
-</div>
+              <div style={{ marginBottom: '15px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '4px' }}>
+                  <label>Głębokość {activeCab.type === 'naroznik' && '(Ramię 1)'}: <b>{Math.round(activeCab.d*100)} cm</b></label>
+                  {activeCab.type === 'naroznik' && <span style={{ fontSize: '11px', color: '#666' }}>Luz na rury z tyłu</span>}
+                </div>
+                <input type="range" min="0.3" max="0.7" step="0.01" value={activeCab.d} onChange={(e) => updateActiveCab({d: parseFloat(e.target.value)})} style={{ width: '100%' }} />
+              </div>
 
-{activeCab.type === 'naroznik' && (
-  <>
-    <div style={{ marginBottom: '15px' }}><label>Szerokość (Ramię 2): <b>{Math.round((activeCab.w2||0.9)*100)} cm</b></label>
-      <input type="range" min="0.5" max="1.5" step="0.05" value={activeCab.w2 || 0.9} onChange={(e) => updateActiveCab({w2: parseFloat(e.target.value)})} style={{ width: '100%' }} />
-    </div>
-    <div style={{ marginBottom: '15px' }}><label>Głębokość (Ramię 2): <b>{Math.round((activeCab.d2||0.5)*100)} cm</b></label>
-      <input type="range" min="0.3" max="0.7" step="0.01" value={activeCab.d2 || 0.5} onChange={(e) => {
-        const newVal = parseFloat(e.target.value);
-        const diff = newVal - (activeCab.d2 || 0.5);
-        updateActiveCab({ d2: newVal, w: parseFloat((activeCab.w + diff).toFixed(2)) });
-      }} style={{ width: '100%' }} />
-    </div>
+              {activeCab.type === 'naroznik' && (
+                <>
+                  <div style={{ marginBottom: '15px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '4px' }}>
+                      <label>Szerokość (Ramię 2): <b>{Math.round(((activeCab.w2||0.9) - 0.5 + activeCab.d)*100)} cm</b></label>
+                      <span style={{ fontSize: '11px', color: '#d35400', fontWeight: 'bold' }}>Front: {Math.round(((activeCab.w2||0.9) - 0.5)*100)} cm</span>
+                    </div>
+                    <input type="range" min="0.5" max="1.5" step="0.05" 
+                      value={(activeCab.w2||0.9) - 0.5 + activeCab.d} 
+                      onChange={(e) => updateActiveCab({w2: parseFloat(e.target.value) - activeCab.d + 0.5})} 
+                      style={{ width: '100%' }} 
+                    />
+                  </div>
+                  
+                  <div style={{ marginBottom: '15px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '4px' }}>
+                      <label>Głębokość (Ramię 2): <b>{Math.round((activeCab.d2||0.5)*100)} cm</b></label>
+                      <span style={{ fontSize: '11px', color: '#666' }}>Luz na rury z tyłu</span>
+                    </div>
+                    <input type="range" min="0.3" max="0.7" step="0.01" value={activeCab.d2 || 0.5} onChange={(e) => updateActiveCab({d2: parseFloat(e.target.value)})} style={{ width: '100%' }} />
+                  </div>
                   
                   <div style={{ marginBottom: '20px', padding: '10px', backgroundColor: '#f8f9fa', border: '1px solid #e9ecef', borderRadius: '8px' }}>
                     <label style={{ fontSize: '12px', fontWeight: 'bold' }}>Kierunek skrętu ciągu szafek:</label>
