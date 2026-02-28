@@ -730,12 +730,30 @@ export default function App() {
           
           {activeCab.type !== 'puste' && (
             <>
-              <div style={{ marginBottom: '15px' }}><label>Głębokość {activeCab.type === 'naroznik' && '(Ramię 1)'}: <b>{Math.round(activeCab.d*100)} cm</b></label><input type="range" min="0.3" max="0.7" step="0.01" value={activeCab.d} onChange={(e) => updateActiveCab({d: parseFloat(e.target.value)})} style={{ width: '100%' }} /></div>
+              <div style={{ marginBottom: '15px' }}><label>Głębokość {activeCab.type === 'naroznik' && '(Ramię 1)'}: <b>{Math.round(activeCab.d*100)} cm</b></label>
+  <input type="range" min="0.3" max="0.7" step="0.01" value={activeCab.d} onChange={(e) => {
+    const newVal = parseFloat(e.target.value);
+    if (activeCab.type === 'naroznik') {
+      const diff = newVal - activeCab.d;
+      updateActiveCab({ d: newVal, w2: parseFloat(((activeCab.w2 || 0.9) + diff).toFixed(2)) });
+    } else {
+      updateActiveCab({ d: newVal });
+    }
+  }} style={{ width: '100%' }} />
+</div>
 
-              {activeCab.type === 'naroznik' && (
-                <>
-                  <div style={{ marginBottom: '15px' }}><label>Szerokość (Ramię 2): <b>{Math.round((activeCab.w2||0.9)*100)} cm</b></label><input type="range" min="0.5" max="1.5" step="0.05" value={activeCab.w2 || 0.9} onChange={(e) => updateActiveCab({w2: parseFloat(e.target.value)})} style={{ width: '100%' }} /></div>
-                  <div style={{ marginBottom: '15px' }}><label>Głębokość (Ramię 2): <b>{Math.round((activeCab.d2||0.5)*100)} cm</b></label><input type="range" min="0.3" max="0.7" step="0.01" value={activeCab.d2 || 0.5} onChange={(e) => updateActiveCab({d2: parseFloat(e.target.value)})} style={{ width: '100%' }} /></div>
+{activeCab.type === 'naroznik' && (
+  <>
+    <div style={{ marginBottom: '15px' }}><label>Szerokość (Ramię 2): <b>{Math.round((activeCab.w2||0.9)*100)} cm</b></label>
+      <input type="range" min="0.5" max="1.5" step="0.05" value={activeCab.w2 || 0.9} onChange={(e) => updateActiveCab({w2: parseFloat(e.target.value)})} style={{ width: '100%' }} />
+    </div>
+    <div style={{ marginBottom: '15px' }}><label>Głębokość (Ramię 2): <b>{Math.round((activeCab.d2||0.5)*100)} cm</b></label>
+      <input type="range" min="0.3" max="0.7" step="0.01" value={activeCab.d2 || 0.5} onChange={(e) => {
+        const newVal = parseFloat(e.target.value);
+        const diff = newVal - (activeCab.d2 || 0.5);
+        updateActiveCab({ d2: newVal, w: parseFloat((activeCab.w + diff).toFixed(2)) });
+      }} style={{ width: '100%' }} />
+    </div>
                   
                   <div style={{ marginBottom: '20px', padding: '10px', backgroundColor: '#f8f9fa', border: '1px solid #e9ecef', borderRadius: '8px' }}>
                     <label style={{ fontSize: '12px', fontWeight: 'bold' }}>Kierunek skrętu ciągu szafek:</label>
