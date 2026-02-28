@@ -171,61 +171,82 @@ function SzafkaNarozna({ cab, dekorFront, dekorBody }) {
   const safeW2 = w2 || 0.9;
   const safeD2 = d2 || 0.5;
 
+  const offsetZ = (0.5 - d) / 2;
+  const offsetX = 0.5 - safeD2;
+  
+  // NOWE: Obliczamy efektywną szerokość Ramienia 1 (odcina "resztkę", która wystawała)
+  const effW = w - offsetX; 
+
   return (
     <group position={[0, baseH, 0]}>
-      <group position={[0, sideY, 0]}>
-        {/* Bok główny */}
+      <group position={[0, 0, offsetZ]}>
+        <group position={[0, sideY, 0]}>
         <mesh position={[-sign * (w/2 - t/2), 0, -t/2]}>
           <boxGeometry args={[t, sideH, d - t]} />
           <PłytaMaterial dekor={dekorBody} w={d} h={sideH} />
         </mesh>
         
-        {/* NAPRAWIONY BOK BOCZNY (Ramię L) - Wyrównany do tyłu szafki (+ t/2 zamiast - t/2) */}
-        <mesh position={[sign * (w/2 - safeD2/2 + t/2), 0, -d/2 + safeW2 - t/2]}>
+        <mesh position={[sign * (w/2 - safeD2/2 + t/2 - offsetX), 0, -d/2 + safeW2 - t/2]}>
           <boxGeometry args={[safeD2 - t, sideH, t]} />
           <PłytaMaterial dekor={dekorBody} w={safeD2 - t} h={sideH} />
         </mesh>
       </group>
       
-      {/* Wieńce (Dno i Góra) oraz wewnętrzne PÓŁKI */}
+      {/* Wieńce i półki */}
       {[
-        t/2, // Dno
-        ...Array.from({ length: cab.shelvesC || 0 }).map((_, i) => t/2 + ((h - 2*t) / ((cab.shelvesC || 0) + 1)) * (i + 1)), // Półki wyliczane dynamicznie
-        h - t/2 // Góra
+        t/2, 
+        ...Array.from({ length: cab.shelvesC || 0 }).map((_, i) => t/2 + ((h - 2*t) / ((cab.shelvesC || 0) + 1)) * (i + 1)), 
+        h - t/2 
       ].map((y, idx) => (
         <group key={idx} position={[0, y, 0]}>
-          <mesh position={[sign * t/2, 0, -t/2]}><boxGeometry args={[w - t, t, d - t]} /><PłytaMaterial dekor={dekorBody} w={w} h={d} rotate /></mesh>
-          <mesh position={[sign * (w/2 - safeD2/2 + t/2), 0, d/2 - t + (safeW2 - d)/2]}><boxGeometry args={[safeD2 - t, t, safeW2 - d]} /><PłytaMaterial dekor={dekorBody} w={safeD2} h={safeW2 - d} rotate /></mesh>
+          {/* NAPRAWIONE: Skrócony wieniec Ramienia 1 (effW) + poprawione wyśrodkowanie */}
+          <mesh position={[sign * (t/2 - offsetX/2), 0, -t/2]}>
+            <boxGeometry args={[effW - t, t, d - t]} />
+            <PłytaMaterial dekor={dekorBody} w={effW} h={d} rotate />
+          </mesh>
+          <mesh position={[sign * (w/2 - safeD2/2 + t/2 - offsetX), 0, d/2 - t + (safeW2 - d)/2]}>
+            <boxGeometry args={[safeD2 - t, t, safeW2 - d]} />
+            <PłytaMaterial dekor={dekorBody} w={safeD2} h={safeW2 - d} rotate />
+          </mesh>
         </group>
       ))}
 
       {/* Plecy HDF */}
       <group position={[0, h/2, 0]}>
-        <group position={[0, 0, -d/2 - 0.001]}><mesh position={[0, 0, 0.001]}><boxGeometry args={[w, h, 0.001]} /><meshStandardMaterial color="#f8f8f8" /></mesh><mesh position={[0, 0, -0.0005]}><boxGeometry args={[w, h, 0.002]} /><MaterialPilśni /></mesh></group>
-        <group position={[sign * (w/2 + 0.001), 0, -d/2 + safeW2/2]}><mesh position={[-sign * 0.001, 0, 0]}><boxGeometry args={[0.001, h, safeW2]} /><meshStandardMaterial color="#f8f8f8" /></mesh><mesh position={[sign * 0.0005, 0, 0]}><boxGeometry args={[0.002, h, safeW2]} /><MaterialPilśni /></mesh></group>
+        <group position={[0, 0, -d/2 - 0.001]}>
+          {/* NAPRAWIONE: Skrócone plecy HDF Ramienia 1 */}
+          <mesh position={[-sign * offsetX/2, 0, 0.001]}>
+            <boxGeometry args={[effW, h, 0.001]} />
+            <meshStandardMaterial color="#f8f8f8" />
+          </mesh>
+          <mesh position={[-sign * offsetX/2, 0, -0.0005]}>
+            <boxGeometry args={[effW, h, 0.002]} />
+            <MaterialPilśni />
+          </mesh>
+        </group>
+        <group position={[sign * (w/2 + 0.001 - offsetX), 0, -d/2 + safeW2/2]}>
+          <mesh position={[-sign * 0.001, 0, 0]}><boxGeometry args={[0.001, h, safeW2]} /><meshStandardMaterial color="#f8f8f8" /></mesh>
+          <mesh position={[sign * 0.0005, 0, 0]}><boxGeometry args={[0.002, h, safeW2]} /><MaterialPilśni /></mesh>
+        </group>
       </group>
 
-      <AnimatedCornerDoors w={w} d={d} w2={safeW2} d2={safeD2} h={h} t={t} gap={0.002} dekorFront={dekorFront} isRight={isRight} />
+      <AnimatedCornerDoors w={w} d={d} w2={safeW2} d2={0.5} h={h} t={t} gap={0.002} dekorFront={dekorFront} isRight={isRight} />
 
-      {/* Nóżki/Cokół (Idealnie wyliczone co do milimetra z zachowaniem słojów) */}
       <group position={[0, -baseH/2, 0]}>
-        
         {(() => {
-          // Jeśli pełny cokół, listwa chowa się między boki (krótsza o grubość płyty)
           const isCokol = baseType === 'cokol' || baseType === 'Pełna skrzynia cokołowa';
           const cokolOffset = isCokol ? t : 0; 
+          const recess = t + 0.05; 
           
-          const recess = t + 0.05; // Cofnięcie cokołu o 5cm względem korpusu + grubość frontu
+          const fixedD2 = 0.5; 
           
-          // 1. LISTWA GŁÓWNA (Przód) - dodajemy 't', aby zachodziła pod kątem na listwę boczną
-          const mainToeW = w - safeD2 + recess + t - cokolOffset;
+          const mainToeW = w - fixedD2 + recess + t - cokolOffset;
           const mainToeX = -sign * (w/2 - mainToeW/2 - cokolOffset);
           const mainToeZ = d/2 - recess - t/2;
 
-          // 2. LISTWA BOCZNA (Ramię) - wydłużona dokładnie o 'recess', żeby dobić do krawędzi
           const sideToeL = safeW2 - d + recess - cokolOffset;
           const sideToeZ = (safeW2 - recess - cokolOffset) / 2;
-          const sideToeX = sign * (w/2 - safeD2 + recess + t/2);
+          const sideToeX = sign * (w/2 - fixedD2 + recess + t/2);
 
           return (
             <>
@@ -242,16 +263,19 @@ function SzafkaNarozna({ cab, dekorFront, dekorBody }) {
           );
         })()}
 
-        {/* Nóżki wędrują głęboko pod spód */}
         {baseType === 'nozki_regulowane' && (
           <>
             <group position={[-sign*(w/2 - 0.05), 0, -d/2 + 0.05]}><NozkaRegulowana height={baseH} /></group>
-            <group position={[sign*(w/2 - 0.05), 0, -d/2 + 0.05]}><NozkaRegulowana height={baseH} /></group>
+            
+            {/* NAPRAWIONA NÓŻKA: Dodano "- offsetX", aby przesuwała się razem ze ściętym tyłem narożnika */}
+            <group position={[sign*(w/2 - 0.05 - offsetX), 0, -d/2 + 0.05]}><NozkaRegulowana height={baseH} /></group>
+            
             <group position={[-sign*(w/2 - 0.05), 0, d/2 - 0.15]}><NozkaRegulowana height={baseH} /></group>
-            <group position={[sign*(w/2 - safeD2 + 0.15), 0, d/2 - 0.15]}><NozkaRegulowana height={baseH} /></group>
-            <group position={[sign*(w/2 - 0.05), 0, -d/2 + safeW2 - 0.15]}><NozkaRegulowana height={baseH} /></group>
+            <group position={[sign*(w/2 - 0.5 + 0.15), 0, d/2 - 0.15]}><NozkaRegulowana height={baseH} /></group>
+            <group position={[sign*(w/2 - 0.05 - offsetX), 0, -d/2 + safeW2 - 0.15]}><NozkaRegulowana height={baseH} /></group>
           </>
         )}
+      </group>
       </group>
     </group>
   );
@@ -570,18 +594,17 @@ export default function App() {
         const safeD2 = cab.d2 || 0.5;
         
         if (isRight) {
-          cursor.translateX(-safeD2 / 2);
-          cursor.translateZ(-cab.d / 2 + safeW2);
+          cursor.translateX(-0.25); // SZTYWNA LINIA: Zawsze równa do frontów szafek 50cm
+          cursor.translateZ(0.25 - cab.d + safeW2); // Rekompensata przesunięcia szafki
           cursor.rotateY(-Math.PI / 2);
-          crossDist += 0.07; // KOREKTA: Kompensacja 7cm na rury, żeby słoje się zeszły!
+          crossDist += 0.07; 
         } else {
-          cursor.translateX(-cab.w + safeD2 / 2);
-          cursor.translateZ(-cab.d / 2 + safeW2);
+          cursor.translateX(-cab.w + 0.25);
+          cursor.translateZ(0.25 - cab.d + safeW2);
           cursor.rotateY(Math.PI / 2);
           crossDist -= 0.07; 
         }
-        // KOREKTA: Narożnik wydłuża odległość dokładnie o długość swojego ramienia, a nie szerokość szafki
-        runDist += safeW2 - cab.d;
+        runDist += safeW2 - 0.5; // Słoje również korzystają ze sztywnej zabudowy
       }
     });
     return result;
@@ -700,23 +723,24 @@ export default function App() {
           
           {activeCab.type !== 'puste' && (
             <>
-              <div style={{ marginBottom: '15px' }}><label>Wysokość korpusu: <b>{Math.round(activeCab.h*100)} cm</b></label><input type="range" min="0.4" max="2.2" step="0.01" value={activeCab.h} onChange={(e) => updateActiveCab({h: parseFloat(e.target.value)})} style={{ width: '100%' }} /></div>
-              <div style={{ marginBottom: '20px' }}><label>Głębokość {activeCab.type === 'naroznik' && '(Ramię 1)'}: <b>{Math.round(activeCab.d*100)} cm</b></label><input type="range" min="0.3" max="0.7" step="0.01" value={activeCab.d} onChange={(e) => updateActiveCab({d: parseFloat(e.target.value)})} style={{ width: '100%' }} /></div>
+              <div style={{ marginBottom: '15px' }}><label>Głębokość {activeCab.type === 'naroznik' && '(Ramię 1)'}: <b>{Math.round(activeCab.d*100)} cm</b></label><input type="range" min="0.3" max="0.7" step="0.01" value={activeCab.d} onChange={(e) => updateActiveCab({d: parseFloat(e.target.value)})} style={{ width: '100%' }} /></div>
 
               {activeCab.type === 'naroznik' && (
-                <div style={{ marginBottom: '20px', padding: '12px', backgroundColor: '#f1f3f5', borderRadius: '10px' }}>
-                  <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '10px' }}>Parametry Narożnika:</label>
-                  <label style={{ fontSize: '11px' }}>Kierunek skrętu (Dla kolejnych szafek):</label>
-                  <select value={activeCab.cornerSide} onChange={(e) => updateActiveCab({cornerSide: e.target.value})} style={{ width: '100%', padding: '5px', marginBottom: '10px' }}>
-                    <option value="prawy">Prawy (skręca w prawo)</option>
-                    <option value="lewy">Lewy (skręca w lewo)</option>
-                  </select>
-                  <label style={{ fontSize: '11px', display: 'block' }}>Szerokość Ramię 2: <b>{Math.round((activeCab.w2||0.9)*100)} cm</b></label>
-                  <input type="range" min="0.5" max="1.5" step="0.05" value={activeCab.w2 || 0.9} onChange={(e) => updateActiveCab({w2: parseFloat(e.target.value)})} style={{ width: '100%' }} />
-                  <label style={{ fontSize: '11px', display: 'block', marginTop: '10px' }}>Głębokość Ramię 2: <b>{Math.round((activeCab.d2||0.5)*100)} cm</b></label>
-                  <input type="range" min="0.3" max="0.7" step="0.01" value={activeCab.d2 || 0.5} onChange={(e) => updateActiveCab({d2: parseFloat(e.target.value)})} style={{ width: '100%' }} />
-                </div>
+                <>
+                  <div style={{ marginBottom: '15px' }}><label>Szerokość (Ramię 2): <b>{Math.round((activeCab.w2||0.9)*100)} cm</b></label><input type="range" min="0.5" max="1.5" step="0.05" value={activeCab.w2 || 0.9} onChange={(e) => updateActiveCab({w2: parseFloat(e.target.value)})} style={{ width: '100%' }} /></div>
+                  <div style={{ marginBottom: '15px' }}><label>Głębokość (Ramię 2): <b>{Math.round((activeCab.d2||0.5)*100)} cm</b></label><input type="range" min="0.3" max="0.7" step="0.01" value={activeCab.d2 || 0.5} onChange={(e) => updateActiveCab({d2: parseFloat(e.target.value)})} style={{ width: '100%' }} /></div>
+                  
+                  <div style={{ marginBottom: '20px', padding: '10px', backgroundColor: '#f8f9fa', border: '1px solid #e9ecef', borderRadius: '8px' }}>
+                    <label style={{ fontSize: '12px', fontWeight: 'bold' }}>Kierunek skrętu ciągu szafek:</label>
+                    <select value={activeCab.cornerSide} onChange={(e) => updateActiveCab({cornerSide: e.target.value})} style={{ width: '100%', padding: '6px', marginTop: '8px', borderRadius: '4px', border: '1px solid #ccc' }}>
+                      <option value="prawy">Prawy (skręca w prawo)</option>
+                      <option value="lewy">Lewy (skręca w lewo)</option>
+                    </select>
+                  </div>
+                </>
               )}
+
+              <div style={{ marginBottom: '20px' }}><label>Wysokość korpusu: <b>{Math.round(activeCab.h*100)} cm</b></label><input type="range" min="0.4" max="2.2" step="0.01" value={activeCab.h} onChange={(e) => updateActiveCab({h: parseFloat(e.target.value)})} style={{ width: '100%' }} /></div>
 
               {activeCab.type === 'hybryda' && (
                 <div style={{ marginBottom: '20px', padding: '12px', backgroundColor: '#f1f3f5', borderRadius: '10px' }}>
@@ -813,20 +837,20 @@ export default function App() {
                   {showWorktopGlobal && cab.hasWorktop && cab.type !== 'puste' && (
                      cab.type === 'naroznik' ? (
                        <group position={[0, cab.h + 0.119, 0]}>
-                         {/* Blat GŁÓWNY narożnika (Wydłużony do ściany) */}
-                         <mesh position={[(cab.cornerSide==='prawy'?1:-1) * (worktopDepth - cab.d - 0.03) / 2, 0, wtCenterZ]}>
-                           <boxGeometry args={[cab.w + (worktopDepth - cab.d - 0.03) + 0.001, 0.038, worktopDepth]} />
-                           <PłytaMaterial dekor={DEKORY[worktopDecor]} w={cab.w + (worktopDepth - cab.d - 0.03)} h={worktopDepth} rotate offsetX={item.dist} offsetY={item.crossDist} />
+                         {/* Blat GŁÓWNY narożnika (Wydłużony do ściany - omija suwaki i trzyma linię) */}
+                         <mesh position={[(cab.cornerSide==='prawy'?1:-1) * (worktopDepth - 0.5 - 0.03) / 2, 0, (0.5 / 2 + 0.03) - (worktopDepth / 2)]}>
+                           <boxGeometry args={[cab.w + (worktopDepth - 0.5 - 0.03) + 0.001, 0.038, worktopDepth]} />
+                           <PłytaMaterial dekor={DEKORY[worktopDecor]} w={cab.w + (worktopDepth - 0.5 - 0.03)} h={worktopDepth} rotate offsetX={item.dist} offsetY={item.crossDist} />
                          </mesh>
-                         {/* Blat BOCZNY narożnika (Ujednolicony: poprawny obrót i kotwiczenie słojów na krawędzi) */}
+                         {/* Blat BOCZNY narożnika */}
                          <mesh 
-                           position={[(cab.cornerSide==='prawy'?1:-1) * (cab.w/2 - (cab.d2||0.5) - 0.03 + worktopDepth/2), 0, (cab.w2||0.9)/2 + 0.015]}
+                           position={[(cab.cornerSide==='prawy'?1:-1) * (cab.w/2 - 0.5 - 0.03 + worktopDepth/2), 0, (cab.w2||0.9)/2 + 0.015]}
                            rotation={[0, cab.cornerSide === 'prawy' ? -Math.PI / 2 : Math.PI / 2, 0]}
                          >
-                           <boxGeometry args={[(cab.w2||0.9) - cab.d - 0.03 + 0.001, 0.038, worktopDepth]} />
+                           <boxGeometry args={[(cab.w2||0.9) - 0.5 - 0.03 + 0.001, 0.038, worktopDepth]} />
                            <PłytaMaterial 
                              dekor={DEKORY[worktopDecor]} 
-                             w={(cab.w2||0.9) - cab.d - 0.03} 
+                             w={(cab.w2||0.9) - 0.5 - 0.03} 
                              h={worktopDepth} 
                              rotate 
                              offsetX={item.dist + cab.w + 0.03} 
