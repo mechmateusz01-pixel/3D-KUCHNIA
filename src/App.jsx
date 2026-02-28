@@ -171,82 +171,90 @@ function SzafkaNarozna({ cab, dekorFront, dekorBody }) {
   const safeW2 = w2 || 0.9;
   const safeD2 = d2 || 0.5;
 
-  const offsetZ = (0.5 - d) / 2;
-  const offsetX = 0.5 - safeD2;
-  
-  // NOWE: Obliczamy efektywną szerokość Ramienia 1 (odcina "resztkę", która wystawała)
-  const effW = w - offsetX; 
+  const effW = w - 0.5 + safeD2 - t; 
+  const plateA_CenterX = sign * (safeD2 - 0.5 + t) / 2;
+  const plateA_CenterZ = 0.25 - d/2 - t/2;
+  const plateA_SizeZ = d - t;
+
+  // NAPRAWA: Zastosowany ten sam "numer". Skracamy ramię 2 o grubość drzwiczek ('t')
+  // i odpowiednio przesuwamy środek ciężkości płyty (plateB_CenterX).
+  const plateB_SizeX = safeD2 - t;
+  const plateB_CenterX = sign * (w/2 - 0.5 + (safeD2 + t)/2);
+  const plateB_SizeZ = safeW2 - 0.5;
+  const plateB_CenterZ = 0.25 - t + plateB_SizeZ / 2;
+
+  const back1_W = effW;
+  const back1_X = plateA_CenterX;
+  const back1_Z = 0.25 - d;
+
+  const back2_L = safeW2 - 0.5 - t + d;
+  const back2_X = sign * (w/2 - 0.5 + safeD2);
+  const back2_Z = safeW2/2 - d/2 - t/2;
 
   return (
     <group position={[0, baseH, 0]}>
-      <group position={[0, 0, offsetZ]}>
-        <group position={[0, sideY, 0]}>
-        <mesh position={[-sign * (w/2 - t/2), 0, -t/2]}>
-          <boxGeometry args={[t, sideH, d - t]} />
+      <group position={[0, sideY, 0]}>
+        <mesh position={[-sign * (w/2 - t/2), 0, plateA_CenterZ]}>
+          <boxGeometry args={[t, sideH, plateA_SizeZ]} />
           <PłytaMaterial dekor={dekorBody} w={d} h={sideH} />
         </mesh>
-        
-        <mesh position={[sign * (w/2 - safeD2/2 + t/2 - offsetX), 0, -d/2 + safeW2 - t/2]}>
-          <boxGeometry args={[safeD2 - t, sideH, t]} />
-          <PłytaMaterial dekor={dekorBody} w={safeD2 - t} h={sideH} />
+
+        {/* NAPRAWA: Skrócony o 't' zewnętrzny bok ramienia 2 */}
+        <mesh position={[plateB_CenterX, 0, safeW2 - 0.25 - t/2]}>
+          <boxGeometry args={[plateB_SizeX, sideH, t]} />
+          <PłytaMaterial dekor={dekorBody} w={plateB_SizeX} h={sideH} />
         </mesh>
       </group>
-      
-      {/* Wieńce i półki */}
+
       {[
         t/2, 
         ...Array.from({ length: cab.shelvesC || 0 }).map((_, i) => t/2 + ((h - 2*t) / ((cab.shelvesC || 0) + 1)) * (i + 1)), 
         h - t/2 
       ].map((y, idx) => (
         <group key={idx} position={[0, y, 0]}>
-          {/* NAPRAWIONE: Skrócony wieniec Ramienia 1 (effW) + poprawione wyśrodkowanie */}
-          <mesh position={[sign * (t/2 - offsetX/2), 0, -t/2]}>
-            <boxGeometry args={[effW - t, t, d - t]} />
-            <PłytaMaterial dekor={dekorBody} w={effW} h={d} rotate />
+          <mesh position={[plateA_CenterX, 0, plateA_CenterZ]}>
+            <boxGeometry args={[effW, t, plateA_SizeZ]} />
+            <PłytaMaterial dekor={dekorBody} w={effW} h={plateA_SizeZ} rotate />
           </mesh>
-          <mesh position={[sign * (w/2 - safeD2/2 + t/2 - offsetX), 0, d/2 - t + (safeW2 - d)/2]}>
-            <boxGeometry args={[safeD2 - t, t, safeW2 - d]} />
-            <PłytaMaterial dekor={dekorBody} w={safeD2} h={safeW2 - d} rotate />
+          {/* NAPRAWA: Skrócone o 't' półki i wieńce ramienia 2 */}
+          <mesh position={[plateB_CenterX, 0, plateB_CenterZ]}>
+            <boxGeometry args={[plateB_SizeX, t, plateB_SizeZ]} />
+            <PłytaMaterial dekor={dekorBody} w={plateB_SizeX} h={plateB_SizeZ} rotate />
           </mesh>
         </group>
       ))}
 
-      {/* Plecy HDF */}
       <group position={[0, h/2, 0]}>
-        <group position={[0, 0, -d/2 - 0.001]}>
-          {/* NAPRAWIONE: Skrócone plecy HDF Ramienia 1 */}
-          <mesh position={[-sign * offsetX/2, 0, 0.001]}>
-            <boxGeometry args={[effW, h, 0.001]} />
-            <meshStandardMaterial color="#f8f8f8" />
-          </mesh>
-          <mesh position={[-sign * offsetX/2, 0, -0.0005]}>
-            <boxGeometry args={[effW, h, 0.002]} />
-            <MaterialPilśni />
-          </mesh>
+        <group position={[back1_X, 0, back1_Z]}>
+          <mesh position={[0, 0, 0.001]}><boxGeometry args={[back1_W, h, 0.002]} /><meshStandardMaterial color="#f8f8f8" /></mesh>
+          <mesh position={[0, 0, -0.001]}><boxGeometry args={[back1_W, h, 0.002]} /><MaterialPilśni /></mesh>
         </group>
-        <group position={[sign * (w/2 + 0.001 - offsetX), 0, -d/2 + safeW2/2]}>
-          <mesh position={[-sign * 0.001, 0, 0]}><boxGeometry args={[0.001, h, safeW2]} /><meshStandardMaterial color="#f8f8f8" /></mesh>
-          <mesh position={[sign * 0.0005, 0, 0]}><boxGeometry args={[0.002, h, safeW2]} /><MaterialPilśni /></mesh>
+        <group position={[back2_X, 0, back2_Z]}>
+          <mesh position={[-sign * 0.001, 0, 0]}><boxGeometry args={[0.002, h, back2_L]} /><meshStandardMaterial color="#f8f8f8" /></mesh>
+          <mesh position={[sign * 0.001, 0, 0]}><boxGeometry args={[0.002, h, back2_L]} /><MaterialPilśni /></mesh>
         </group>
       </group>
 
-      <AnimatedCornerDoors w={w} d={d} w2={safeW2} d2={0.5} h={h} t={t} gap={0.002} dekorFront={dekorFront} isRight={isRight} />
+      <AnimatedCornerDoors w={w} d={0.5} w2={safeW2} d2={0.5} h={h} t={t} gap={0.002} dekorFront={dekorFront} isRight={isRight} />
 
+      {/* Cokół i Nóżki */}
       <group position={[0, -baseH/2, 0]}>
         {(() => {
           const isCokol = baseType === 'cokol' || baseType === 'Pełna skrzynia cokołowa';
           const cokolOffset = isCokol ? t : 0; 
           const recess = t + 0.05; 
           
-          const fixedD2 = 0.5; 
-          
-          const mainToeW = w - fixedD2 + recess + t - cokolOffset;
+          const mainToeW = w - 0.5 + recess + t - cokolOffset;
           const mainToeX = -sign * (w/2 - mainToeW/2 - cokolOffset);
-          const mainToeZ = d/2 - recess - t/2;
+          
+          // POPRAWKA: Zmiana znaku na - t/2 idealnie cofa listwę główną na linię z szafkami obok
+          const mainToeZ = 0.25 - recess - t/2; 
 
-          const sideToeL = safeW2 - d + recess - cokolOffset;
-          const sideToeZ = (safeW2 - recess - cokolOffset) / 2;
-          const sideToeX = sign * (w/2 - fixedD2 + recess + t/2);
+          const sideToeL = safeW2 - 0.5 + recess - cokolOffset;
+          const sideToeZ = 0.25 - recess + sideToeL/2;
+          
+          // POPRAWKA: Zmiana znaku na + t/2 idealnie cofa listwę boczną
+          const sideToeX = sign * (w/2 - 0.5 + recess + t/2);
 
           return (
             <>
@@ -254,7 +262,6 @@ function SzafkaNarozna({ cab, dekorFront, dekorBody }) {
                 <boxGeometry args={[mainToeW, baseH, t]} />
                 <PłytaMaterial dekor={dekorBody} w={mainToeW} h={baseH} rotate />
               </mesh>
-              
               <mesh position={[sideToeX, 0, sideToeZ]}>
                 <boxGeometry args={[t, baseH, sideToeL]} />
                 <PłytaMaterial dekor={dekorBody} w={sideToeL} h={baseH} rotate />
@@ -265,17 +272,17 @@ function SzafkaNarozna({ cab, dekorFront, dekorBody }) {
 
         {baseType === 'nozki_regulowane' && (
           <>
-            <group position={[-sign*(w/2 - 0.05), 0, -d/2 + 0.05]}><NozkaRegulowana height={baseH} /></group>
+            {/* POPRAWKA: Nóżki przednie wsunięte głębiej, na 15 cm (-0.15) od krawędzi frontu, dokładnie tak jak w zwykłych szafkach */}
+            <group position={[-sign*(w/2 - 0.05), 0, 0.25 - 0.15]}><NozkaRegulowana height={baseH} /></group>
+            <group position={[-sign*(w/2 - 0.05), 0, 0.25 - d + 0.05]}><NozkaRegulowana height={baseH} /></group>
             
-            {/* NAPRAWIONA NÓŻKA: Dodano "- offsetX", aby przesuwała się razem ze ściętym tyłem narożnika */}
-            <group position={[sign*(w/2 - 0.05 - offsetX), 0, -d/2 + 0.05]}><NozkaRegulowana height={baseH} /></group>
+            <group position={[sign*(w/2 - 0.5 + 0.15), 0, 0.25 - 0.15]}><NozkaRegulowana height={baseH} /></group>
+            <group position={[sign*(w/2 - 0.5 + safeD2 - 0.05), 0, 0.25 - d + 0.05]}><NozkaRegulowana height={baseH} /></group>
             
-            <group position={[-sign*(w/2 - 0.05), 0, d/2 - 0.15]}><NozkaRegulowana height={baseH} /></group>
-            <group position={[sign*(w/2 - 0.5 + 0.15), 0, d/2 - 0.15]}><NozkaRegulowana height={baseH} /></group>
-            <group position={[sign*(w/2 - 0.05 - offsetX), 0, -d/2 + safeW2 - 0.15]}><NozkaRegulowana height={baseH} /></group>
+            <group position={[sign*(w/2 - 0.5 + 0.15), 0, safeW2 - 0.25 - 0.05]}><NozkaRegulowana height={baseH} /></group>
+            <group position={[sign*(w/2 - 0.5 + safeD2 - 0.05), 0, safeW2 - 0.25 - 0.05]}><NozkaRegulowana height={baseH} /></group>
           </>
         )}
-      </group>
       </group>
     </group>
   );
@@ -591,20 +598,20 @@ export default function App() {
       if (cab.type === 'naroznik') {
         const isRight = cab.cornerSide === 'prawy';
         const safeW2 = cab.w2 || 0.9;
-        const safeD2 = cab.d2 || 0.5;
         
         if (isRight) {
-          cursor.translateX(-0.25); // SZTYWNA LINIA: Zawsze równa do frontów szafek 50cm
-          cursor.translateZ(0.25 - cab.d + safeW2); // Rekompensata przesunięcia szafki
+          // COFAMY IDEALNIE O 25CM (połowę standardowej głębokości), aby wyrównać punkt startu nowej szafki
+          cursor.translateX(-0.25); 
+          cursor.translateZ(safeW2 - 0.25); 
           cursor.rotateY(-Math.PI / 2);
           crossDist += 0.07; 
         } else {
-          cursor.translateX(-cab.w + 0.25);
-          cursor.translateZ(0.25 - cab.d + safeW2);
+          cursor.translateX(-cab.w + 0.25); 
+          cursor.translateZ(safeW2 - 0.25);
           cursor.rotateY(Math.PI / 2);
           crossDist -= 0.07; 
         }
-        runDist += safeW2 - 0.5; // Słoje również korzystają ze sztywnej zabudowy
+        runDist += safeW2 - 0.5; 
       }
     });
     return result;
