@@ -532,7 +532,7 @@ const DOMYSLNA_SZAFKA = {
   drawersC: 3, doorsC: 1, shelvesC: 1, softClose: false, doorDirection: 'left',
   split: 30, order: 'szuflady-gora', ratios: [33.3, 33.3, 33.4],
   useCustomColors: false, fDecor: domyslnyDekorKlucz, bDecor: domyslnyDekorKlucz, hasWorktop: true,
-  w2: 0.9, d2: 0.5, cornerSide: 'prawy' 
+  w2: 1.0, d2: 0.5, cornerSide: 'prawy' 
 };
 
 // --- 6. APLIKACJA GŁÓWNA ---
@@ -710,7 +710,20 @@ export default function App() {
           <label style={{ fontSize: '13px', fontWeight: 'bold', display: 'block', marginBottom: '10px' }}>Wybierz Typ:</label>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '10px' }}>
             {['drzwi', 'szuflady', 'hybryda', 'puste', 'naroznik'].map(t => (
-              <button key={t} onClick={() => updateActiveCab({type: t})} style={{ width: 'calc(50% - 4px)', padding: '15px 5px', backgroundColor: activeCab.type === t ? '#eef2f3' : '#fff', border: `2px solid ${activeCab.type === t ? '#40c057' : '#ddd'}`, borderRadius: '10px', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+              <button key={t} onClick={() => {
+                // INTELIGENTNA ZMIANA: Gdy wybierasz narożnik, od razu ustaw oba ramiona na 100 cm
+                if (t === 'naroznik' && activeCab.type !== 'naroznik') {
+                  updateActiveCab({ type: t, w: 1.0, w2: 1.0 });
+                } 
+                // Gdy wracasz do zwykłej szafki, przywróć standardowe 60 cm
+                else if (t !== 'naroznik' && activeCab.type === 'naroznik') {
+                  updateActiveCab({ type: t, w: 0.6 });
+                } 
+                // W pozostałych przypadkach tylko zmień typ
+                else {
+                  updateActiveCab({ type: t });
+                }
+              }} style={{ width: 'calc(50% - 4px)', padding: '15px 5px', backgroundColor: activeCab.type === t ? '#eef2f3' : '#fff', border: `2px solid ${activeCab.type === t ? '#40c057' : '#ddd'}`, borderRadius: '10px', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
                 <MiniaturaSzafki cab={{...activeCab, type: t, w: 0.6, h: 0.82}} size={45} showHandles={true} />
                 <div style={{ fontSize: '10px', marginTop: '8px', textTransform: 'uppercase', fontWeight: 'bold' }}>{t}</div>
               </button>
@@ -735,7 +748,7 @@ export default function App() {
               </b></label>
               {activeCab.type === 'naroznik' && <span style={{ fontSize: '11px', color: '#d35400', fontWeight: 'bold' }}>Front: {Math.round((activeCab.w - 0.5)*100)} cm</span>}
             </div>
-            <input type="range" min="0.15" max="1.5" step="0.05" 
+            <input type="range" min="0.15" max="1.5" step="0.01" 
               value={activeCab.type === 'naroznik' ? activeCab.w - 0.5 + (activeCab.d2 || 0.5) : activeCab.w} 
               onChange={(e) => {
                 const val = parseFloat(e.target.value);
@@ -754,7 +767,6 @@ export default function App() {
               <div style={{ marginBottom: '15px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '4px' }}>
                   <label>Głębokość {activeCab.type === 'naroznik' && '(Ramię 1)'}: <b>{Math.round(activeCab.d*100)} cm</b></label>
-                  {activeCab.type === 'naroznik' && <span style={{ fontSize: '11px', color: '#666' }}>Luz na rury z tyłu</span>}
                 </div>
                 <input type="range" min="0.3" max="0.7" step="0.01" value={activeCab.d} onChange={(e) => updateActiveCab({d: parseFloat(e.target.value)})} style={{ width: '100%' }} />
               </div>
@@ -766,7 +778,7 @@ export default function App() {
                       <label>Szerokość (Ramię 2): <b>{Math.round(((activeCab.w2||0.9) - 0.5 + activeCab.d)*100)} cm</b></label>
                       <span style={{ fontSize: '11px', color: '#d35400', fontWeight: 'bold' }}>Front: {Math.round(((activeCab.w2||0.9) - 0.5)*100)} cm</span>
                     </div>
-                    <input type="range" min="0.5" max="1.5" step="0.05" 
+                    <input type="range" min="0.5" max="1.5" step="0.01" 
                       value={(activeCab.w2||0.9) - 0.5 + activeCab.d} 
                       onChange={(e) => updateActiveCab({w2: parseFloat(e.target.value) - activeCab.d + 0.5})} 
                       style={{ width: '100%' }} 
@@ -776,7 +788,6 @@ export default function App() {
                   <div style={{ marginBottom: '15px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '4px' }}>
                       <label>Głębokość (Ramię 2): <b>{Math.round((activeCab.d2||0.5)*100)} cm</b></label>
-                      <span style={{ fontSize: '11px', color: '#666' }}>Luz na rury z tyłu</span>
                     </div>
                     <input type="range" min="0.3" max="0.7" step="0.01" value={activeCab.d2 || 0.5} onChange={(e) => updateActiveCab({d2: parseFloat(e.target.value)})} style={{ width: '100%' }} />
                   </div>
