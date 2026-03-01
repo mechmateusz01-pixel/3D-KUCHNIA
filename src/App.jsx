@@ -577,8 +577,9 @@ export default function App() {
     const cursor = new THREE.Object3D();
     cursor.position.set(0, 0, 0);
 
-    let runDist = 0; // Długość ciągu (dla słojów wzdłuż blatu)
-    let crossDist = 0; // Przesunięcie poprzeczne (dla słojów w poprzek blatu)
+    let runDist = 0; 
+    let crossDist = 0; 
+    let cornerCount = 0; // NOWY LICZNIK NAROŻNIKÓW
 
     cabinets.forEach((cab) => {
       cursor.translateX(cab.w / 2);
@@ -589,18 +590,19 @@ export default function App() {
         pos: [cursor.position.x, 0, cursor.position.z], 
         rot: cursor.rotation.y,
         dist: runDist,
-        crossDist: crossDist // Zapisujemy przesunięcie poprzeczne dla tej szafki
+        crossDist: crossDist,
+        autoFlip: cornerCount >= 2 // WYKONANIE POLECENIA: Obróć wszystko po 2 narożniku
       });
 
       cursor.translateX(cab.w / 2); 
-      runDist += cab.w; // Wydłużamy miarkę
+      runDist += cab.w; 
 
       if (cab.type === 'naroznik') {
+        cornerCount++;
         const isRight = cab.cornerSide === 'prawy';
-        const safeW2 = cab.w2 || 0.9;
+        const safeW2 = cab.w2 || 1.0;
         
         if (isRight) {
-          // COFAMY IDEALNIE O 25CM (połowę standardowej głębokości), aby wyrównać punkt startu nowej szafki
           cursor.translateX(-0.25); 
           cursor.translateZ(safeW2 - 0.25); 
           cursor.rotateY(-Math.PI / 2);
@@ -870,7 +872,7 @@ export default function App() {
       </div>
 
       <div style={{ flex: 1 }}>
-        <Canvas camera={{ position: [3, 2.5, 4], fov: 50 }}>
+        <Canvas camera={{ position: [sceneCenter[0] - 4, 1.8, sceneCenter[2]], fov: 55 }}>
           <ambientLight intensity={0.9} /><pointLight position={[10, 10, 10]} intensity={1.5} /><directionalLight position={[-5, 5, -5]} intensity={1} />
           <Suspense fallback={null}>
             {layout.map((item, index) => {
@@ -879,13 +881,16 @@ export default function App() {
               const b = DEKORY[cab.useCustomColors ? cab.bDecor : globalB];
               
               const wtCenterZ = (cab.d / 2 + 0.03) - (worktopDepth / 2);
+              
+              // Sprytne połączenie: jeśli minęliśmy 2 narożnik (autoFlip), odwracamy szafkę. 
+              const isFlipped = cab.type !== 'naroznik' && (cab.reverseFront ? !item.autoFlip : item.autoFlip);
 
               return (
                 <group key={cab.id} position={item.pos} rotation={[0, item.rot, 0]}>
                   {cab.type === 'naroznik' ? (
                      <SzafkaNarozna cab={cab} dekorFront={f} dekorBody={b} />
                   ) : (
-                     <group rotation={[0, cab.reverseFront ? Math.PI : 0, 0]}>
+                     <group rotation={[0, isFlipped ? Math.PI : 0, 0]}>
                        <Szafka 
                          width={cab.w} height={cab.h} depth={cab.d} dekorFront={f} dekorBody={b} 
                          type={cab.type} baseType={cab.baseType} doorCount={cab.doorsC} 
@@ -921,16 +926,16 @@ export default function App() {
                          </mesh>
                        </group>
                      ) : (
-                       <mesh position={[0, cab.h + 0.119, cab.reverseFront ? -wtCenterZ : wtCenterZ]}>
+                       <mesh position={[0, cab.h + 0.119, isFlipped ? -wtCenterZ : wtCenterZ]}>
                          <boxGeometry args={[cab.w + 0.001, 0.038, worktopDepth]} />
-                         {/* Blaty szafek (Fizyczny nawis + idealna kompensacja tekstury) */}
+                         {/* Blaty szafek (Fizyczny nawis + idealna kompensacja tekstury z obrotem 180) */}
                          <PłytaMaterial 
                            dekor={DEKORY[worktopDecor]} 
                            w={cab.w} 
                            h={worktopDepth} 
                            rotate 
                            offsetX={item.dist} 
-                           offsetY={item.crossDist + (cab.reverseFront ? (wtCenterZ * 2) : 0)} 
+                           offsetY={item.crossDist + (isFlipped ? (wtCenterZ * 2) : 0)} 
                          />
                        </mesh>
                      )
