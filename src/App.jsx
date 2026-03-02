@@ -919,7 +919,7 @@ export default function App() {
                      
                      return cab.type === 'naroznik' ? (
                        <group position={[0, cab.h + 0.119, 0]} rotation={[0, isFlipped ? Math.PI : 0, 0]}>
-                         {/* Blat GŁÓWNY narożnika (Zachowuje się dokładnie tak jak aktualne ramię) */}
+                         {/* Blat GŁÓWNY narożnika (Wydłużony do ściany - omija suwaki i trzyma linię) */}
                          <mesh position={[(cab.cornerSide==='prawy'?1:-1) * (worktopDepth - 0.5 - 0.03) / 2, 0, (0.5 / 2 + 0.03) - (worktopDepth / 2)]}>
                            <boxGeometry args={[cab.w + (worktopDepth - 0.5 - 0.03) + 0.001, 0.038, worktopDepth]} />
                            <PłytaMaterial 
@@ -927,8 +927,8 @@ export default function App() {
                              w={cab.w + (worktopDepth - 0.5 - 0.03)} 
                              h={worktopDepth} 
                              rotate 
-                             offsetX={isFlipped ? -item.dist : item.dist} 
-                             offsetY={item.crossDist + (isFlipped ? (wtCenterZ * 2) : 0)} 
+                             offsetX={isFlipped ? item.dist + cab.w + (cab.cornerSide === 'lewy' ? (worktopDepth - 0.5 - 0.03) : 0) - (cabinets[index - 1] ? cabinets[index - 1].w : 0.6) : item.dist} 
+                             offsetY={isFlipped ? -(item.crossDist + (wtCenterZ * 2)) : item.crossDist} 
                            />
                          </mesh>
                          {/* Blat BOCZNY narożnika (Kameleon - udaje pierwsze ogniwo NASTĘPNEGO ramienia) */}
