@@ -52,8 +52,7 @@ function ActualTexture({ url, w, h, rotate, scale, offsetX = 0, offsetY = 0 }) {
     if (rotate) {
       cloned.repeat.set(Math.max(0.1, h * scale), Math.max(0.1, w * scale));
       cloned.rotation = Math.PI / 2;
-      // KLUCZOWA ZMIANA: Dodany MINUS przy offsetX. 
-      // Obrót o 90 stopni odwraca wektory, więc musimy przesuwać słoje "do tyłu", żeby na blacie szły "do przodu"!
+      // Wracamy do oryginału - to działało idealnie dla reszty kuchni!
       cloned.offset.set(offsetY * scale, -offsetX * scale);
     } else {
       cloned.repeat.set(Math.max(0.1, w * scale), Math.max(0.1, h * scale));
@@ -912,18 +911,31 @@ export default function App() {
                      </group>
                   )}
                   
-                  {showWorktopGlobal && cab.hasWorktop && cab.type !== 'puste' && (
-                     cab.type === 'naroznik' ? (
+                  {showWorktopGlobal && cab.hasWorktop && cab.type !== 'puste' && (() => {
+                     // Sprawdzamy, czy NASTĘPNE ramię będzie obrócone (żeby idealnie dopasować boczny blat narożnika)
+                     const nextCorners = cornersBefore + 1;
+                     const nextShouldFlip = nextCorners === 2;
+                     const nextIsFlipped = cab.reverseFront ? !nextShouldFlip : nextShouldFlip;
+                     
+                     return cab.type === 'naroznik' ? (
                        <group position={[0, cab.h + 0.119, 0]} rotation={[0, isFlipped ? Math.PI : 0, 0]}>
-                         {/* Blat GŁÓWNY narożnika (Wydłużony do ściany - omija suwaki i trzyma linię) */}
+                         {/* Blat GŁÓWNY narożnika (Zachowuje się dokładnie tak jak aktualne ramię) */}
                          <mesh position={[(cab.cornerSide==='prawy'?1:-1) * (worktopDepth - 0.5 - 0.03) / 2, 0, (0.5 / 2 + 0.03) - (worktopDepth / 2)]}>
                            <boxGeometry args={[cab.w + (worktopDepth - 0.5 - 0.03) + 0.001, 0.038, worktopDepth]} />
-                           <PłytaMaterial dekor={DEKORY[worktopDecor]} w={cab.w + (worktopDepth - 0.5 - 0.03)} h={worktopDepth} rotate offsetX={item.dist} offsetY={item.crossDist} />
+                           <PłytaMaterial 
+                             dekor={DEKORY[worktopDecor]} 
+                             w={cab.w + (worktopDepth - 0.5 - 0.03)} 
+                             h={worktopDepth} 
+                             rotate 
+                             offsetX={isFlipped ? -item.dist : item.dist} 
+                             offsetY={item.crossDist + (isFlipped ? (wtCenterZ * 2) : 0)} 
+                           />
                          </mesh>
-                         {/* Blat BOCZNY narożnika */}
+                         {/* Blat BOCZNY narożnika (Kameleon - udaje pierwsze ogniwo NASTĘPNEGO ramienia) */}
                          <mesh 
                            position={[(cab.cornerSide==='prawy'?1:-1) * (cab.w/2 - 0.5 - 0.03 + worktopDepth/2), 0, (cab.w2||0.9)/2 + 0.015]}
-                           rotation={[0, cab.cornerSide === 'prawy' ? -Math.PI / 2 : Math.PI / 2, 0]}
+                           // KLUCZ: Jeśli następne ramię jest odwrócone (isFlipped !== nextIsFlipped), fizycznie obracamy ten blat o 180° (Math.PI)
+                           rotation={[0, (cab.cornerSide === 'prawy' ? -Math.PI / 2 : Math.PI / 2) + (isFlipped !== nextIsFlipped ? Math.PI : 0), 0]}
                          >
                            <boxGeometry args={[(cab.w2||0.9) - 0.5 - 0.03 + 0.001, 0.038, worktopDepth]} />
                            <PłytaMaterial 
@@ -931,26 +943,26 @@ export default function App() {
                              w={(cab.w2||0.9) - 0.5 - 0.03} 
                              h={worktopDepth} 
                              rotate 
-                             offsetX={item.dist + cab.w + 0.03} 
-                             offsetY={item.crossDist + (cab.cornerSide === 'prawy' ? 0.07 : -0.07)} 
+                             offsetX={nextIsFlipped ? -(item.dist + cab.w + 0.03) : (item.dist + cab.w + 0.03)} 
+                             offsetY={item.crossDist + (cab.cornerSide === 'prawy' ? 0.07 : -0.07) + (nextIsFlipped ? (wtCenterZ * 2) : 0)} 
                            />
                          </mesh>
                        </group>
                      ) : (
                        <mesh position={[0, cab.h + 0.119, isFlipped ? -wtCenterZ : wtCenterZ]}>
                          <boxGeometry args={[cab.w + 0.001, 0.038, worktopDepth]} />
-                         {/* Blaty szafek (Fizyczny nawis + idealna kompensacja tekstury z obrotem 180) */}
+                         {/* Blaty szafek */}
                          <PłytaMaterial 
                            dekor={DEKORY[worktopDecor]} 
                            w={cab.w} 
                            h={worktopDepth} 
                            rotate 
-                           offsetX={item.dist} 
+                           offsetX={isFlipped ? -item.dist : item.dist} 
                            offsetY={item.crossDist + (isFlipped ? (wtCenterZ * 2) : 0)} 
                          />
                        </mesh>
-                     )
-                  )}
+                     );
+                  })()}
                 </group>
               );
             })}
