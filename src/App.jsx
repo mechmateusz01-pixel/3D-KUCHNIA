@@ -397,6 +397,32 @@ function Szafka({ width, height, depth, dekorFront, dekorBody, type, baseType, d
     </group>
   );
 }
+// --- NOWY KOMPONENT: ŚCIANY 3D ---
+function Walls3D({ nodes }) {
+  if (nodes.length < 2) return null;
+  const walls = [];
+  
+  for (let i = 0; i < nodes.length - 1; i++) {
+    const p1 = nodes[i];
+    const p2 = nodes[i + 1];
+    
+    // Obliczamy długość, pozycję i kąt obrotu każdej ściany
+    const dx = p2.x - p1.x;
+    const dz = p2.z - p1.z;
+    const length = Math.sqrt(dx * dx + dz * dz);
+    const angle = -Math.atan2(dz, dx); 
+    const posX = (p1.x + p2.x) / 2;
+    const posZ = (p1.z + p2.z) / 2;
+
+    walls.push(
+      <mesh key={i} position={[posX, 1.25, posZ]} rotation={[0, angle, 0]}>
+        <boxGeometry args={[length + 0.1, 2.5, 0.1]} /> {/* 0.1 to grubość ściany, 2.5 to wysokość */}
+        <meshStandardMaterial color="#ffffff" transparent opacity={0.3} depthWrite={false} side={THREE.DoubleSide} />
+      </mesh>
+    );
+  }
+  return <group>{walls}</group>;
+}
 
 // --- 5. INTERFEJS (MINIATURY) ---
 function MiniaturaSzafki({ cab, size = 50, showHandles = true }) {
@@ -536,6 +562,10 @@ const DOMYSLNA_SZAFKA = {
 
 // --- 6. APLIKACJA GŁÓWNA ---
 export default function App() {
+  const [currentStep, setCurrentStep] = useState(1); // Zaczynamy od Kroku 1
+  const [wallNodes, setWallNodes] = useState([]); // W przyszłości tu będziemy trzymać narysowane ściany w 2D
+  const [previewNode, setPreviewNode] = useState(null);
+  const [isHoveringStart, setIsHoveringStart] = useState(false);
   const [cabinets, setCabinets] = useState([{ ...DOMYSLNA_SZAFKA, id: Date.now() }]);
   const [activeIdx, setActiveIdx] = useState(0);
   const [showWorktopGlobal, setShowWorktopGlobal] = useState(false);
@@ -630,345 +660,574 @@ export default function App() {
     return [(minX + maxX) / 2, 0.8, (minZ + maxZ) / 2];
   }, [layout]);
 
- return (
-    <div style={{ display: 'flex', width: '100vw', height: '100vh', fontFamily: 'sans-serif', margin: 0, backgroundColor: '#f0f0f0' }}>
-      <div style={{ width: '450px', padding: '20px', backgroundColor: '#f8f9fa', borderRight: '1px solid #ddd', overflowY: 'auto' }}>
+// --- NOWOŚĆ: INTELIGENTNE ZAMYKANIE POKOJU (OPTYMALIZACJA ŚCIAN) ---
+  const zamykajZOptymalizacja = () => {
+    const first = wallNodes[0];
+    const last = wallNodes[wallNodes.length - 1];
+    let finalNodes = [];
+    
+    // 1. Standardowe domknięcie (z zachowaniem kąta prostego)
+    if (last.x !== first.x && last.z !== first.z) {
+      finalNodes = [...wallNodes, { x: first.x, z: last.z }, first];
+    } else {
+      finalNodes = [...wallNodes, first];
+    }
+
+    // 2. Czyszczenie zbędnych punktów (np. gdy ktoś zaczął rysować na środku ściany)
+    let unique = finalNodes.slice(0, -1);
+    let changed = true;
+    while(changed && unique.length >= 3) {
+      changed = false;
+      let temp = [];
+      for(let i = 0; i < unique.length; i++) {
+        let prev = unique[(i - 1 + unique.length) % unique.length];
+        let curr = unique[i];
+        let next = unique[(i + 1) % unique.length];
         
-        {/* 1. KOLORYSTYKA PROJEKTU (Przeniesiona na samą górę) */}
-        <div style={{ marginBottom: '20px', padding: '15px', backgroundColor: '#fff', borderRadius: '12px', border: '1px solid #ddd', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
-          {/* UJEDNOLICONY NAGŁÓWEK */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px', borderBottom: '2px solid #e9ecef', paddingBottom: '8px' }}>
-            <h2 style={{ fontSize: '18px', margin: 0, color: '#2c3e50' }}>Kolorystyka Projektu</h2>
-            {activeCab.type !== 'puste' && (
-              <label style={{ fontSize: '11px', background: '#fef3c7', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', margin: 0 }}>
-                <input type="checkbox" checked={activeCab.useCustomColors} onChange={(e) => updateActiveCab({ useCustomColors: e.target.checked })} /> inna dla tej szafki
-              </label>
-            )}
-          </div>
-          
-          {activeCab.type !== 'puste' && (
-            <>
-              {[ {l: "Fronty", v: activeCab.useCustomColors ? activeCab.fDecor : globalF, s: (v) => activeCab.useCustomColors ? updateActiveCab({fDecor: v}) : setGlobalF(v)},
-                 {l: "Korpus", v: activeCab.useCustomColors ? activeCab.bDecor : globalB, s: (v) => activeCab.useCustomColors ? updateActiveCab({bDecor: v}) : setGlobalB(v)}
-              ].map((item, idx) => (
-                <div key={idx} style={{ marginBottom: '12px' }}>
-                  <label style={{ fontSize: '12px', fontWeight: 'bold' }}>Płyta {item.l}:</label>
-                  <div style={{ display: 'flex', gap: '8px', marginTop: '5px', alignItems: 'center' }}>
-                    <div style={{ width: '35px', height: '35px', borderRadius: '6px', border: '1px solid #ccc', background: DEKORY[item.v].url ? `url(${DEKORY[item.v].url})` : DEKORY[item.v].color, backgroundSize: 'cover' }} />
-                    <CustomSelect value={item.v} onChange={item.s} />
-                  </div>
-                </div>
-              ))}
-            </>
-          )}
+        // Sprawdzamy, czy 3 kolejne punkty tworzą prostą linię w osi X lub Z
+        let sameX = Math.abs(prev.x - curr.x) < 0.01 && Math.abs(curr.x - next.x) < 0.01;
+        let sameZ = Math.abs(prev.z - curr.z) < 0.01 && Math.abs(curr.z - next.z) < 0.01;
+        
+        if (sameX || sameZ) {
+          changed = true; // Wyrzucamy punkt środkowy (curr), pozwalając ścianom się scalić!
+        } else {
+          temp.push(curr);
+        }
+      }
+      if (temp.length < 3) break; // Zabezpieczenie na wypadek ekstremalnych błędów
+      unique = temp;
+    }
+    
+    // Zapisujemy nowy, czysty kształt i resetujemy podglądy
+    setWallNodes([...unique, unique[0]]);
+    setIsHoveringStart(false);
+    setPreviewNode(null);
+  };
 
-          <div style={{ marginTop: '15px', paddingTop: '15px', borderTop: '1px solid #eee' }}>
-            <label style={{ display: 'flex', alignItems: 'center', fontWeight: 'bold', fontSize: '13px', cursor: 'pointer' }}>
-              <input type="checkbox" checked={showWorktopGlobal} onChange={(e) => setShowWorktopGlobal(e.target.checked)} style={{ width: '18px', height: '18px', marginRight: '8px' }} /> pokaż blaty
-            </label>
-            {showWorktopGlobal && (
-              <div style={{ marginTop: '12px', padding: '10px', background: '#f8f9fa', borderRadius: '8px' }}>
-                <label style={{ fontSize: '12px', fontWeight: 'bold' }}>Dekor blatu:</label>
-                <div style={{ display: 'flex', gap: '8px', marginTop: '5px', alignItems: 'center' }}>
-                  <div style={{ width: '35px', height: '35px', borderRadius: '6px', border: '1px solid #ccc', background: DEKORY[worktopDecor].url ? `url(${DEKORY[worktopDecor].url})` : DEKORY[worktopDecor].color, backgroundSize: 'cover' }} />
-                  <CustomSelect value={worktopDecor} onChange={setWorktopDecor} />
-                </div>
-                <label style={{ fontSize: '11px', display: 'block', marginTop: '10px' }}>Głębokość blatu: <b>{Math.round(worktopDepth*100)} cm</b></label>
-                <input type="range" min="0.4" max="1.2" step="0.01" value={worktopDepth} onChange={(e) => setWorktopDepth(parseFloat(e.target.value))} style={{ width: '100%' }} />
-              </div>
-            )}
-          </div>
-        </div>
+ return (
+    <div style={{ display: 'flex', flexDirection: 'column', width: '100vw', height: '100vh', fontFamily: 'sans-serif', margin: 0, backgroundColor: '#f0f0f0' }}>
+      
+      {/* GÓRNY PASEK ZAKŁADEK (NAWIGACJA) */}
+      <div style={{ display: 'flex', backgroundColor: '#2c3e50', padding: '10px 20px', gap: '15px', alignItems: 'center', boxShadow: '0 2px 10px rgba(0,0,0,0.2)', zIndex: 100 }}>
+        <div style={{ color: 'white', fontWeight: 'bold', fontSize: '18px', marginRight: '30px' }}>Osobisty Stolarz 3D</div>
+        
+        <button 
+          onClick={() => setCurrentStep(1)} 
+          style={{ padding: '10px 20px', backgroundColor: currentStep === 1 ? '#40c057' : 'transparent', color: 'white', border: currentStep === 1 ? 'none' : '1px solid #7f8c8d', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px', transition: '0.2s' }}
+        >
+          📐 Krok 1: Kształt i Ściany
+        </button>
 
-        {/* --- NOWY NAGŁÓWEK: WYBIERZ / DODAJ --- */}
-        <h2 style={{ fontSize: '18px', marginTop: '30px', marginBottom: '15px', color: '#2c3e50', borderBottom: '2px solid #e9ecef', paddingBottom: '8px' }}>
-          Wybierz / Dodaj szafkę
-        </h2>
-
-        {/* 2. ZAKŁADKI SZAFEK */}
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '30px', paddingBottom: '10px' }}>
-          {cabinets.map((cab, i) => (
-            <button key={cab.id} onClick={() => setActiveIdx(i)} style={{ display: 'flex', flexDirection: 'column', gap: '5px', padding: '10px', backgroundColor: i === activeIdx ? '#2e7d32' : '#fff', color: i === activeIdx ? '#fff' : '#333', border: i === activeIdx ? '1px solid #1b5e20' : '1px solid #ddd', borderRadius: '8px', cursor: 'pointer', minWidth: '95px', alignItems: 'center' }}>
-              
-              {/* UCHWYTY WŁĄCZONE */}
-              <MiniaturaSzafki cab={{...cab, w: 0.6, h: 0.82}} size={40} showHandles={true} />
-              
-              <span style={{ fontSize: '11px', fontWeight: 'bold', textTransform: 'capitalize', textAlign: 'center' }}>
-                {cab.type} {Math.round(cab.w * 100)}
-              </span>
-            </button>
-          ))}
-          <button onClick={addCabinet} style={{ padding: '10px', backgroundColor: '#2c3e50', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>+ Dodaj</button>
-        </div>
-
-        {/* --- NOWY NAGŁÓWEK: EDYCJA --- */}
-        <h2 style={{ fontSize: '18px', marginBottom: '20px', color: '#2c3e50', borderBottom: '2px solid #e9ecef', paddingBottom: '8px' }}>
-          Edytuj wybraną szafkę
-        </h2>
-
-        {/* Reszta kodu zostaje bez zmian (Wybierz Typ itp.) */}
-        <div style={{ marginBottom: '20px' }}>
-          <label style={{ fontSize: '13px', fontWeight: 'bold', display: 'block', marginBottom: '10px' }}>Wybierz Typ:</label>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '10px' }}>
-            {['drzwi', 'szuflady', 'hybryda', 'puste', 'naroznik'].map(t => (
-              <button key={t} onClick={() => {
-                // INTELIGENTNA ZMIANA: Gdy wybierasz narożnik, od razu ustaw oba ramiona na 100 cm
-                if (t === 'naroznik' && activeCab.type !== 'naroznik') {
-                  updateActiveCab({ type: t, w: 1.0, w2: 1.0 });
-                } 
-                // Gdy wracasz do zwykłej szafki, przywróć standardowe 60 cm
-                else if (t !== 'naroznik' && activeCab.type === 'naroznik') {
-                  updateActiveCab({ type: t, w: 0.6 });
-                } 
-                // W pozostałych przypadkach tylko zmień typ
-                else {
-                  updateActiveCab({ type: t });
-                }
-              }} style={{ width: 'calc(50% - 4px)', padding: '15px 5px', backgroundColor: activeCab.type === t ? '#eef2f3' : '#fff', border: `2px solid ${activeCab.type === t ? '#40c057' : '#ddd'}`, borderRadius: '10px', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                <MiniaturaSzafki cab={{...activeCab, type: t, w: 0.6, h: 0.82}} size={45} showHandles={true} />
-                <div style={{ fontSize: '10px', marginTop: '8px', textTransform: 'uppercase', fontWeight: 'bold' }}>{t}</div>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div style={{ padding: '15px', backgroundColor: '#fff', borderRadius: '12px', border: '1px solid #ddd' }}>
-          
-          <div style={{ margin: '0 0 15px 0', padding: '10px', border: '1px solid #ffd8a8', background: '#fff9db', borderRadius: '8px' }}>
-            <label style={{ display: 'flex', alignItems: 'center', fontSize: '13px', fontWeight: 'bold', cursor: 'pointer' }}>
-              <input type="checkbox" checked={activeCab.hasWorktop} onChange={(e) => updateActiveCab({hasWorktop: e.target.checked})} style={{ marginRight: '10px' }} /> Blat nad tą sekcją
-            </label>
-          </div>
-
-          <div style={{ marginBottom: '15px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '4px' }}>
-              <label>Szerokość sekcji {activeCab.type === 'naroznik' && '(Ramię 1)'}: <b>
-                {activeCab.type === 'naroznik' 
-                  ? Math.round((activeCab.w - 0.5 + (activeCab.d2 || 0.5)) * 100) 
-                  : Math.round(activeCab.w * 100)} cm
-              </b></label>
-              {activeCab.type === 'naroznik' && <span style={{ fontSize: '11px', color: '#d35400', fontWeight: 'bold' }}>Front: {Math.round((activeCab.w - 0.5)*100)} cm</span>}
-            </div>
-            <input type="range" min="0.15" max="1.5" step="0.01" 
-              value={activeCab.type === 'naroznik' ? activeCab.w - 0.5 + (activeCab.d2 || 0.5) : activeCab.w} 
-              onChange={(e) => {
-                const val = parseFloat(e.target.value);
-                if (activeCab.type === 'naroznik') {
-                  updateActiveCab({w: val - (activeCab.d2 || 0.5) + 0.5});
-                } else {
-                  updateActiveCab({w: val});
-                }
-              }} 
-              style={{ width: '100%' }} 
-            />
-          </div>
-          
-          {activeCab.type !== 'puste' && (
-            <>
-              <div style={{ marginBottom: '15px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '4px' }}>
-                  <label>Głębokość {activeCab.type === 'naroznik' && '(Ramię 1)'}: <b>{Math.round(activeCab.d*100)} cm</b></label>
-                </div>
-                <input type="range" min="0.3" max="0.7" step="0.01" value={activeCab.d} onChange={(e) => updateActiveCab({d: parseFloat(e.target.value)})} style={{ width: '100%' }} />
-              </div>
-
-              {activeCab.type === 'naroznik' && (
-                <>
-                  <div style={{ marginBottom: '15px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '4px' }}>
-                      <label>Szerokość (Ramię 2): <b>{Math.round(((activeCab.w2||0.9) - 0.5 + activeCab.d)*100)} cm</b></label>
-                      <span style={{ fontSize: '11px', color: '#d35400', fontWeight: 'bold' }}>Front: {Math.round(((activeCab.w2||0.9) - 0.5)*100)} cm</span>
-                    </div>
-                    <input type="range" min="0.5" max="1.5" step="0.01" 
-                      value={(activeCab.w2||0.9) - 0.5 + activeCab.d} 
-                      onChange={(e) => updateActiveCab({w2: parseFloat(e.target.value) - activeCab.d + 0.5})} 
-                      style={{ width: '100%' }} 
-                    />
-                  </div>
-                  
-                  <div style={{ marginBottom: '15px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '4px' }}>
-                      <label>Głębokość (Ramię 2): <b>{Math.round((activeCab.d2||0.5)*100)} cm</b></label>
-                    </div>
-                    <input type="range" min="0.3" max="0.7" step="0.01" value={activeCab.d2 || 0.5} onChange={(e) => updateActiveCab({d2: parseFloat(e.target.value)})} style={{ width: '100%' }} />
-                  </div>
-                  
-                  <div style={{ marginBottom: '20px', padding: '10px', backgroundColor: '#f8f9fa', border: '1px solid #e9ecef', borderRadius: '8px' }}>
-                    <label style={{ fontSize: '12px', fontWeight: 'bold' }}>Kierunek skrętu ciągu szafek:</label>
-                    <select value={activeCab.cornerSide} onChange={(e) => updateActiveCab({cornerSide: e.target.value})} style={{ width: '100%', padding: '6px', marginTop: '8px', borderRadius: '4px', border: '1px solid #ccc' }}>
-                      <option value="prawy">Prawy (skręca w prawo)</option>
-                      <option value="lewy">Lewy (skręca w lewo)</option>
-                    </select>
-                  </div>
-                </>
-              )}
-
-              <div style={{ marginBottom: '20px' }}><label>Wysokość korpusu: <b>{Math.round(activeCab.h*100)} cm</b></label><input type="range" min="0.4" max="2.2" step="0.01" value={activeCab.h} onChange={(e) => updateActiveCab({h: parseFloat(e.target.value)})} style={{ width: '100%' }} /></div>
-
-              {activeCab.type === 'hybryda' && (
-                <div style={{ marginBottom: '20px', padding: '12px', backgroundColor: '#f1f3f5', borderRadius: '10px' }}>
-                  <label style={{ fontSize: '12px' }}>Układ:</label>
-                  <select value={activeCab.order} onChange={(e) => updateActiveCab({order: e.target.value})} style={{ width: '100%', padding: '8px', margin: '5px 0' }}><option value="szuflady-gora">Szuflady góra</option><option value="szuflady-dol">Szuflady dół</option></select>
-                  <label style={{ fontSize: '12px' }}>Podział: {activeCab.split}%</label><input type="range" min="15" max="85" value={activeCab.split} onChange={(e) => updateActiveCab({split: parseInt(e.target.value)})} style={{ width: '100%' }} />
-                </div>
-              )}
-
-              {activeCab.type !== 'drzwi' && activeCab.type !== 'naroznik' && (
-                <div style={{ marginBottom: '20px', padding: '12px', backgroundColor: '#f1f3f5', borderRadius: '10px' }}>
-                  <label style={{ fontSize: '13px', fontWeight: 'bold' }}>Liczba szuflad: {activeCab.drawersC}</label>
-                  <input type="range" min="1" max="4" value={activeCab.drawersC} onChange={(e) => { const c = parseInt(e.target.value); updateActiveCab({ drawersC: c, ratios: Array(c).fill(100/c) }); }} style={{ width: '100%' }} />
-                  {(activeCab.ratios || []).map((r, i) => (
-                    <div key={i} style={{ marginTop: '10px' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px' }}><span>Szuflada {i+1}</span><b>{((r/100)*(activeCab.h * (activeCab.type==='hybryda' ? activeCab.split/100 : 1))*100).toFixed(1)} cm</b></div>
-                      <input type="range" min="10" max="80" step="0.1" value={r} onChange={(e) => handleRatio(i, e.target.value)} style={{ width: '100%' }} />
-                    </div>
-                  ))}
-                </div>
-              )}
-
-                    {/* Sekcja ustawień dla zwykłych DRZWI */}
-              {activeCab.type === 'drzwi' && (
-                <div style={{ marginBottom: '20px', padding: '12px', backgroundColor: '#f1f3f5', borderRadius: '10px' }}>
-                  <div style={{ display: 'flex', gap: '10px' }}>
-                    <div style={{ flex: 1 }}><label style={{ fontSize: '11px' }}>Drzwi:</label><select value={activeCab.doorsC} onChange={(e) => updateActiveCab({doorsC: parseInt(e.target.value)})} style={{ width: '100%' }}><option value={1}>1 Front</option><option value={2}>2 Fronty</option></select></div>
-                    {activeCab.doorsC === 1 && <div style={{ flex: 1 }}><label style={{ fontSize: '11px' }}>Strona:</label><select value={activeCab.doorDirection} onChange={(e) => updateActiveCab({doorDirection: e.target.value})} style={{ width: '100%' }}><option value="left">Lewa</option><option value="right">Prawa</option></select></div>}
-                  </div>
-                </div>
-              )}
-
-              {/* UNIWERSALNY SUWAK PÓŁEK (Pojawia się tam, gdzie ma to sens) */}
-              {['drzwi', 'hybryda', 'naroznik'].includes(activeCab.type) && (
-                <div style={{ marginBottom: '20px', padding: '12px', backgroundColor: '#e3f2fd', borderRadius: '10px', border: '1px solid #90caf9' }}>
-                  <label style={{ fontSize: '13px', fontWeight: 'bold' }}>Liczba półek w środku: {activeCab.shelvesC || 0}</label>
-                  <input type="range" min="0" max="5" value={activeCab.shelvesC || 0} onChange={(e) => updateActiveCab({shelvesC: parseInt(e.target.value)})} style={{ width: '100%', marginTop: '5px' }} />
-                </div>
-              )}
-
-              <label style={{ fontSize: '15px', fontWeight: 'bold', display: 'flex', alignItems: 'center', cursor: 'pointer', marginTop: '10px' }}>
-                <input type="checkbox" checked={activeCab.softClose} onChange={(e) => updateActiveCab({softClose: e.target.checked})} style={{ marginRight: '10px' }} /> Cichy domyk
-              </label>
-
-              {/* NOWA OPCJA: OBRACANIE O 180 STOPNI */}
-              <label style={{ fontSize: '15px', fontWeight: 'bold', display: 'flex', alignItems: 'center', cursor: 'pointer', marginTop: '10px', color: '#d35400' }}>
-                <input type="checkbox" checked={activeCab.reverseFront || false} onChange={(e) => updateActiveCab({reverseFront: e.target.checked})} style={{ marginRight: '10px' }} /> Obróć front o 180° (Układ U / Wyspa)
-              </label>
-
-              <div style={{ marginTop: '10px' }}><label style={{ fontSize: '12px' }}>Podstawa:</label><select value={activeCab.baseType} onChange={(e) => updateActiveCab({baseType: e.target.value})} style={{ width: '100%', padding: '5px' }}>
-                <option value="nozki_regulowane">Nóżki regulowane</option><option value="cokol">Pełna skrzynia cokołowa</option>
-              </select></div>
-            </>
-          )}
-
-          <div style={{ marginTop: '20px', display: 'flex', gap: '10px' }}>
-            <button onClick={() => moveActiveCab(-1)} disabled={activeIdx === 0} style={{ flex: 1, padding: '10px', backgroundColor: '#e9ecef', border: '1px solid #ced4da', borderRadius: '8px', cursor: activeIdx === 0 ? 'not-allowed' : 'pointer', fontSize: '12px', fontWeight: 'bold' }}>⬅️ Przesuń w lewo</button>
-            <button onClick={() => moveActiveCab(1)} disabled={activeIdx === cabinets.length - 1} style={{ flex: 1, padding: '10px', backgroundColor: '#e9ecef', border: '1px solid #ced4da', borderRadius: '8px', cursor: activeIdx === cabinets.length - 1 ? 'not-allowed' : 'pointer', fontSize: '12px', fontWeight: 'bold' }}>Przesuń w prawo ➡️</button>
-          </div>
-
-          {cabinets.length > 1 && <button onClick={() => { setCabinets(cabinets.filter((_, i) => i !== activeIdx)); setActiveIdx(0); }} style={{ width: '100%', marginTop: '10px', padding: '12px', backgroundColor: '#fa5252', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>Usuń szafkę</button>}
-        </div>
-
-        <div style={{ marginTop: '20px', padding: '20px', backgroundColor: '#2c3e50', color: '#40c057', borderRadius: '12px', textAlign: 'center', fontSize: '28px', fontWeight: 'bold' }}>{finalPrice} zł</div>
+        <button 
+          onClick={() => setCurrentStep(2)} 
+          style={{ padding: '10px 20px', backgroundColor: currentStep === 2 ? '#40c057' : 'transparent', color: 'white', border: currentStep === 2 ? 'none' : '1px solid #7f8c8d', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px', transition: '0.2s' }}
+        >
+          🗄️ Krok 2: Projektowanie Szafek
+        </button>
       </div>
 
-      <div style={{ flex: 1 }}>
-        <Canvas camera={{ position: [sceneCenter[0] - 4, 1.8, sceneCenter[2]], fov: 55 }}>
-          <ambientLight intensity={0.9} /><pointLight position={[10, 10, 10]} intensity={1.5} /><directionalLight position={[-5, 5, -5]} intensity={1} />
-          <Suspense fallback={null}>
-            {layout.map((item, index) => {
-              const cab = cabinets[index];
-              const f = DEKORY[cab.useCustomColors ? cab.fDecor : globalF];
-              const b = DEKORY[cab.useCustomColors ? cab.bDecor : globalB];
-              
-              const wtCenterZ = (cab.d / 2 + 0.03) - (worktopDepth / 2);
-              
-              // --- INTELIGENTNA LOGIKA OBROTU ---
-              // 1. Liczymy ile narożników było przed tą konkretną szafką
-              let cornersBefore = 0;
-              for(let i = 0; i < index; i++) {
-                if(cabinets[i].type === 'naroznik') cornersBefore++;
-              }
+      {/* GŁÓWNA ZAWARTOŚĆ APLIKACJI (Zależna od wybranego kroku) */}
+      <div style={{ flex: 1, display: 'flex', position: 'relative', overflow: 'hidden' }}>
 
-              // 2. Odwracamy TYLKO szafki w 3. ramieniu (czyli mające dokładnie 2 narożniki przed sobą). 
-              // 4. ramię (po 3 narożniku) naturalnie patrzy do środka, więc nie potrzebuje obrotu!
-              const shouldFlip = cornersBefore === 2;
-              const isFlipped = cab.reverseFront ? !shouldFlip : shouldFlip;
+        {/* --- KROK 1: KREATOR ŚCIAN 2D --- */}
+        {currentStep === 1 && (
+          // DODANE: flex: 1, boxSizing: 'border-box' oraz większy padding z dołu (60px)
+          <div style={{ flex: 1, width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', backgroundColor: '#e9ecef', padding: '20px 20px 60px 20px', overflowY: 'auto', boxSizing: 'border-box' }}>
+            <h1 style={{ color: '#2c3e50', marginBottom: '5px' }}>Narysuj układ ścian</h1>
+            <p style={{ color: '#7f8c8d', marginBottom: '15px' }}>Kliknij na siatkę, aby postawić róg ściany. Skala siatki to co 0.5 metra.</p>
 
-              return (
-                <group key={cab.id} position={item.pos} rotation={[0, item.rot, 0]}>
-                  {cab.type === 'naroznik' ? (
-                     <group rotation={[0, isFlipped ? Math.PI : 0, 0]}>
-                      <SzafkaNarozna cab={cab} dekorFront={f} dekorBody={b} />
-                     </group>
-                  ) : (
-                     <group rotation={[0, isFlipped ? Math.PI : 0, 0]}>
-                       <Szafka 
-                         width={cab.w} height={cab.h} depth={cab.d} dekorFront={f} dekorBody={b} 
-                         type={cab.type} baseType={cab.baseType} doorCount={cab.doorsC} 
-                         doorDirection={cab.doorDirection} drawersCount={cab.drawersC} 
-                         shelvesCount={cab.shelvesC} drawerRatios={cab.ratios} 
-                         hybridSplit={cab.split} hybridOrder={cab.order} 
-                       />
-                     </group>
-                  )}
+            
+
+            {/* Obszar rysowania (SVG) */}
+            <div 
+              style={{ width: '600px', height: '600px', backgroundColor: 'white', border: '2px solid #bdc3c7', borderRadius: '8px', position: 'relative', cursor: isHoveringStart ? 'pointer' : 'crosshair', boxShadow: '0 4px 15px rgba(0,0,0,0.1)', flexShrink: 0 }}
+              onMouseMove={(e) => {
+                const isRoomClosed = wallNodes.length > 2 && wallNodes[0].x === wallNodes[wallNodes.length - 1].x && wallNodes[0].z === wallNodes[wallNodes.length - 1].z;
+                if (isRoomClosed) return;
+
+                const rect = e.currentTarget.getBoundingClientRect();
+                const px = e.clientX - rect.left;
+                const pz = e.clientY - rect.top;
+                
+                // --- ZMIANA: Skala 1m = 120px. Krok co 1cm! ---
+                let x = Math.round((px - 300) / 1.2) / 100;
+                let z = Math.round((pz - 300) / 1.2) / 100;
+
+                if (wallNodes.length > 2) {
+                  // Mnożnik x120
+                  const firstPx = wallNodes[0].x * 120 + 300;
+                  const firstPz = wallNodes[0].z * 120 + 300;
+                  const distance = Math.sqrt(Math.pow(px - firstPx, 2) + Math.pow(pz - firstPz, 2));
                   
-                  {showWorktopGlobal && cab.hasWorktop && cab.type !== 'puste' && (() => {
-                     // Sprawdzamy, czy NASTĘPNE ramię będzie obrócone (żeby idealnie dopasować boczny blat narożnika)
-                     const nextCorners = cornersBefore + 1;
-                     const nextShouldFlip = nextCorners === 2;
-                     const nextIsFlipped = cab.reverseFront ? !nextShouldFlip : nextShouldFlip;
-                     
-                     return cab.type === 'naroznik' ? (
-                       <group position={[0, cab.h + 0.119, 0]} rotation={[0, isFlipped ? Math.PI : 0, 0]}>
-                         {/* Blat GŁÓWNY narożnika (Wydłużony do ściany - omija suwaki i trzyma linię) */}
-                         <mesh position={[(cab.cornerSide==='prawy'?1:-1) * (worktopDepth - 0.5 - 0.03) / 2, 0, (0.5 / 2 + 0.03) - (worktopDepth / 2)]}>
-                           <boxGeometry args={[cab.w + (worktopDepth - 0.5 - 0.03) + 0.001, 0.038, worktopDepth]} />
-                           <PłytaMaterial 
-                             dekor={DEKORY[worktopDecor]} 
-                             w={cab.w + (worktopDepth - 0.5 - 0.03)} 
-                             h={worktopDepth} 
-                             rotate 
-                             offsetX={isFlipped ? item.dist + cab.w + (cab.cornerSide === 'lewy' ? (worktopDepth - 0.5 - 0.03) : 0) - (cabinets[index - 1] ? cabinets[index - 1].w : 0.6) : item.dist} 
-                             offsetY={isFlipped ? -(item.crossDist + (wtCenterZ * 2)) : item.crossDist} 
-                           />
-                         </mesh>
-                         {/* Blat BOCZNY narożnika (Kameleon - udaje pierwsze ogniwo NASTĘPNEGO ramienia) */}
-                         <mesh 
-                           position={[(cab.cornerSide==='prawy'?1:-1) * (cab.w/2 - 0.5 - 0.03 + worktopDepth/2), 0, (cab.w2||0.9)/2 + 0.015]}
-                           // KLUCZ: Jeśli następne ramię jest odwrócone (isFlipped !== nextIsFlipped), fizycznie obracamy ten blat o 180° (Math.PI)
-                           rotation={[0, (cab.cornerSide === 'prawy' ? -Math.PI / 2 : Math.PI / 2) + (isFlipped !== nextIsFlipped ? Math.PI : 0), 0]}
-                         >
-                           <boxGeometry args={[(cab.w2||0.9) - 0.5 - 0.03 + 0.001, 0.038, worktopDepth]} />
-                           <PłytaMaterial 
-                             dekor={DEKORY[worktopDecor]} 
-                             w={(cab.w2||0.9) - 0.5 - 0.03} 
-                             h={worktopDepth} 
-                             rotate 
-                             offsetX={nextIsFlipped ? -(item.dist + cab.w + 0.03) : (item.dist + cab.w + 0.03)} 
-                             offsetY={item.crossDist + (cab.cornerSide === 'prawy' ? 0.07 : -0.07) + (nextIsFlipped ? (wtCenterZ * 2) : 0)} 
-                           />
-                         </mesh>
-                       </group>
-                     ) : (
-                       <mesh position={[0, cab.h + 0.119, isFlipped ? -wtCenterZ : wtCenterZ]}>
-                         <boxGeometry args={[cab.w + 0.001, 0.038, worktopDepth]} />
-                         {/* Blaty szafek */}
-                         <PłytaMaterial 
-                           dekor={DEKORY[worktopDecor]} 
-                           w={cab.w} 
-                           h={worktopDepth} 
-                           rotate 
-                           offsetX={isFlipped ? -item.dist : item.dist} 
-                           offsetY={item.crossDist + (isFlipped ? (wtCenterZ * 2) : 0)} 
-                         />
-                       </mesh>
-                     );
-                  })()}
-                </group>
-              );
-            })}
-          </Suspense>
-          <OrbitControls makeDefault target={sceneCenter} enablePan={true} />
-        </Canvas>
+                  if (distance < 30) {
+                    setIsHoveringStart(true);
+                    setPreviewNode(wallNodes[0]);
+                    return; 
+                  }
+                }
+                setIsHoveringStart(false);
+
+                if (wallNodes.length > 0) {
+                  const last = wallNodes[wallNodes.length - 1];
+                  if (Math.abs(x - last.x) > Math.abs(z - last.z)) z = last.z; 
+                  else x = last.x; 
+                }
+                setPreviewNode({ x, z });
+              }}
+              onMouseLeave={() => { setPreviewNode(null); setIsHoveringStart(false); }}
+              onClick={() => {
+                const isRoomClosed = wallNodes.length > 2 && wallNodes[0].x === wallNodes[wallNodes.length - 1].x && wallNodes[0].z === wallNodes[wallNodes.length - 1].z;
+                if (isRoomClosed || !previewNode) return;
+
+                if (isHoveringStart && wallNodes.length > 2) {
+                  zamykajZOptymalizacja();
+                  return;
+                }
+
+                if (wallNodes.length > 0 && previewNode.x === wallNodes[wallNodes.length - 1].x && previewNode.z === wallNodes[wallNodes.length - 1].z) return;
+                setWallNodes([...wallNodes, previewNode]);
+              }}
+            >
+              <svg width="100%" height="100%" style={{ overflow: 'visible' }}>
+                <defs><pattern id="grid" width="30" height="30" patternUnits="userSpaceOnUse"><path d="M 30 0 L 0 0 0 30" fill="none" stroke="#f1f2f6" strokeWidth="1"/></pattern></defs>
+                <rect width="100%" height="100%" fill="url(#grid)" />
+                <line x1="300" y1="0" x2="300" y2="600" stroke="#dfe4ea" strokeWidth="2" />
+                <line x1="0" y1="300" x2="600" y2="300" stroke="#dfe4ea" strokeWidth="2" />
+
+                {/* Gotowe ściany (Mnożnik x120) */}
+                {wallNodes.length > 0 && <path d={`M ${wallNodes.map(p => `${p.x * 120 + 300},${p.z * 120 + 300}`).join(' L ')}`} fill="none" stroke="#2c3e50" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />}
+
+                {/* WYMIARY DLA GOTOWYCH ŚCIAN (Środek = x60 zamiast x30) */}
+                {wallNodes.slice(0, -1).map((node, i) => {
+                  const p1 = node; const p2 = wallNodes[i + 1];
+                  const cx = (p1.x + p2.x) * 60 + 300; 
+                  const cy = (p1.z + p2.z) * 60 + 300;
+                  const dx = p2.x - p1.x;
+                  const dz = p2.z - p1.z;
+                  const len = Math.sqrt(dx * dx + dz * dz);
+                  if (len === 0) return null;
+                  
+                  const dist = Math.round(len * 100);
+                  const nx = -dz / len; const nz = dx / len;
+                  
+                  // --- NOWOŚĆ: DYNAMICZNY OFFSET ---
+                  // Ściany poziome (gdzie tekst rozsuwamy w górę/dół) dostają mniejszy offset, bo ramka jest niska
+                  // Ściany pionowe (rozsuwamy w lewo/prawo) zostają z szerokim offsetem 38px
+                  const isHorizontal = Math.abs(dx) > Math.abs(dz);
+                  const offset = isHorizontal ? 18 : 38; 
+                  
+                  const dimX = cx + nx * offset; const dimY = cy + nz * offset;
+                  const nameX = cx - nx * offset; const nameY = cy - nz * offset;
+
+                  return (
+                    <g key={`label-${i}`}>
+                      <rect x={dimX - 26} y={dimY - 11} width="52" height="22" fill="white" rx="4" opacity="0.9" stroke="#bdc3c7" strokeWidth="1" />
+                      <text x={dimX} y={dimY + 1} textAnchor="middle" alignmentBaseline="middle" fontSize="12" fontWeight="bold" fill="#2c3e50">{dist} cm</text>
+                      
+                      <rect x={nameX - 32} y={nameY - 11} width="64" height="22" fill="#f8f9fa" rx="4" opacity="0.9" stroke="#bdc3c7" strokeWidth="1" />
+                      <text x={nameX} y={nameY + 1} textAnchor="middle" alignmentBaseline="middle" fontSize="11" fontWeight="bold" fill="#7f8c8d">Ściana {i + 1}</text>
+                    </g>
+                  );
+                })}
+
+                {/* Linia i poziomy wymiar PODGLĄDU na żywo (Mnożniki x120 i x60) */}
+                {!(wallNodes.length > 2 && wallNodes[0].x === wallNodes[wallNodes.length - 1].x && wallNodes[0].z === wallNodes[wallNodes.length - 1].z) && wallNodes.length > 0 && previewNode && (() => {
+                  const p1 = wallNodes[wallNodes.length - 1]; const p2 = previewNode;
+                  const cx = (p1.x + p2.x) * 60 + 300; const cy = (p1.z + p2.z) * 60 + 300;
+                  const dx = p2.x - p1.x; const dz = p2.z - p1.z;
+                  const len = Math.sqrt(dx * dx + dz * dz);
+                  if (len === 0) return null;
+                  
+                  const dist = Math.round(len * 100);
+                  const nx = -dz / len; const nz = dx / len;
+                  
+                  // Dynamiczny offset zastosowany również do podglądu na żywo
+                  const isHorizontal = Math.abs(dx) > Math.abs(dz);
+                  const offset = isHorizontal ? 18 : 38;
+                  
+                  const dimX = cx + nx * offset; const dimY = cy + nz * offset;
+
+                  return (
+                    <g>
+                      <line x1={p1.x * 120 + 300} y1={p1.z * 120 + 300} x2={p2.x * 120 + 300} y2={p2.z * 120 + 300} stroke={isHoveringStart ? "#e74c3c" : "#3498db"} strokeWidth="4" strokeDasharray="8,8" opacity={isHoveringStart ? "0.9" : "0.6"} />
+                      <g>
+                        <rect x={dimX - 26} y={dimY - 11} width="52" height="22" fill="white" rx="4" opacity="0.9" stroke={isHoveringStart ? "#e74c3c" : "#3498db"} strokeWidth="1" />
+                        <text x={dimX} y={dimY + 1} textAnchor="middle" alignmentBaseline="middle" fontSize="12" fontWeight="bold" fill={isHoveringStart ? "#e74c3c" : "#3498db"}>{dist} cm</text>
+                      </g>
+                    </g>
+                  );
+                })()}
+
+                {/* Narożniki ścian (Mnożnik x120) */}
+                {wallNodes.map((p, i) => { if (i === 0) return null; return <circle key={i} cx={p.x * 120 + 300} cy={p.z * 120 + 300} r="5" fill="#2c3e50" />; })}
+
+                {wallNodes.length > 0 && (
+                  <g>
+                    <circle cx={wallNodes[0].x * 120 + 300} cy={wallNodes[0].z * 120 + 300} r={(isHoveringStart && !(wallNodes.length > 2 && wallNodes[0].x === wallNodes[wallNodes.length - 1].x && wallNodes[0].z === wallNodes[wallNodes.length - 1].z)) ? "12" : "6"} fill="#e74c3c" style={{ transition: 'r 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275)' }} />
+                    {isHoveringStart && !(wallNodes.length > 2 && wallNodes[0].x === wallNodes[wallNodes.length - 1].x && wallNodes[0].z === wallNodes[wallNodes.length - 1].z) && (
+                      <text x={wallNodes[0].x * 120 + 300 + 18} y={wallNodes[0].z * 120 + 300 + 5} fill="#c0392b" fontSize="14" fontWeight="bold" style={{ pointerEvents: 'none', animation: 'fadeIn 0.2s' }}>Zamknij pokój</text>
+                    )}
+                  </g>
+                )}
+                {/* Podgląd kursora (Mnożnik x120) */}
+                {previewNode && !isHoveringStart && !(wallNodes.length > 2 && wallNodes[0].x === wallNodes[wallNodes.length - 1].x && wallNodes[0].z === wallNodes[wallNodes.length - 1].z) && <circle cx={previewNode.x * 120 + 300} cy={previewNode.z * 120 + 300} r="5" fill="#3498db" opacity="0.6" />}
+              </svg>
+            </div>
+
+            {/* --- NOWOŚĆ: INTERFEJS DO RĘCZNEJ EDYCJI DŁUGOŚCI ŚCIAN --- */}
+            {wallNodes.length > 1 && (
+              <div style={{ marginTop: '20px', width: '100%', maxWidth: '600px', backgroundColor: 'white', padding: '15px', borderRadius: '8px', border: '1px solid #bdc3c7', boxShadow: '0 2px 10px rgba(0,0,0,0.05)' }}>
+                <h3 style={{ fontSize: '15px', color: '#2c3e50', margin: '0 0 10px 0' }}>Wymiary ścian (zmień by dopasować do pokoju):</h3>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
+                  {wallNodes.slice(0, -1).map((node, i) => {
+                    const dx = wallNodes[i+1].x - node.x;
+                    const dz = wallNodes[i+1].z - node.z;
+                    const lenCm = Math.round(Math.sqrt(dx*dx + dz*dz) * 100);
+                    return (
+                      <div key={i} style={{ display: 'flex', alignItems: 'center', background: '#f8f9fa', padding: '6px 10px', borderRadius: '6px', border: '1px solid #ccc' }}>
+                        <span style={{ fontSize: '12px', marginRight: '8px', fontWeight: 'bold', color: '#2c3e50' }}>Ściana {i+1}:</span>
+                        <input 
+                          type="number" 
+                          value={lenCm}
+                          onChange={(e) => {
+                            const newLen = parseInt(e.target.value);
+                            if (isNaN(newLen) || newLen <= 0) return;
+                            
+                            // Matematyka zmiany długości odcinka i przesuwania punktu B
+                            const newNodes = wallNodes.map(n => ({ ...n }));
+                            const A = newNodes[i];
+                            const B = newNodes[i + 1];
+                            const currentLength = Math.sqrt(dx * dx + dz * dz) || 1;
+                            
+                            B.x = A.x + (dx / currentLength) * (newLen / 100);
+                            B.z = A.z + (dz / currentLength) * (newLen / 100);
+
+                            // Jeśli pokój jest zamknięty i edytujemy OSTATNIĄ ścianę - musimy zsynchronizować pierwszy punkt!
+                            const isRoomClosed = wallNodes.length > 2 && wallNodes[0].x === wallNodes[wallNodes.length - 1].x && wallNodes[0].z === wallNodes[wallNodes.length - 1].z;
+                            if (isRoomClosed && i + 1 === newNodes.length - 1) {
+                              newNodes[0] = { ...B };
+                            }
+                            setWallNodes(newNodes);
+                          }}
+                          style={{ width: '60px', border: '1px solid #ddd', borderRadius: '4px', padding: '4px', textAlign: 'center', fontWeight: 'bold', fontSize: '13px' }}
+                        />
+                        <span style={{ fontSize: '12px', marginLeft: '4px', color: '#7f8c8d' }}>cm</span>
+                      </div>
+                    )
+                  })}
+                </div>
+                <p style={{ fontSize: '11px', color: '#95a5a6', margin: '10px 0 0 0' }}>* Zmiana długości przesuwa węzeł, co może wpłynąć na kąty (np. skosy w pokojach).</p>
+              </div>
+            )}
+
+            {/* Przyciski sterujące */}
+            <div style={{ display: 'flex', gap: '15px', marginTop: '20px' }}>
+              <button onClick={() => setWallNodes([])} style={{ padding: '10px 20px', backgroundColor: '#e74c3c', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>
+                Wyczyść wszystko
+              </button>
+              
+              {wallNodes.length > 2 && !(wallNodes[0].x === wallNodes[wallNodes.length - 1].x && wallNodes[0].z === wallNodes[wallNodes.length - 1].z) && (
+                <button 
+                  onClick={zamykajZOptymalizacja} 
+                  style={{ padding: '10px 20px', backgroundColor: '#f39c12', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}
+                >
+                  Zamknij pomieszczenie
+                </button>
+              )}
+
+              <button onClick={() => setCurrentStep(2)} style={{ padding: '10px 30px', backgroundColor: '#40c057', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '16px', fontWeight: 'bold', boxShadow: '0 4px 15px rgba(64, 192, 87, 0.3)' }}>
+                {wallNodes.length > 0 ? "Gotowe, wstaw szafki ➡️" : "Pomiń rysowanie ścian ➡️"}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* --- KROK 2: TWOJA DOTYCHCZASOWA APLIKACJA 3D --- */}
+        {currentStep === 2 && (
+          <div style={{ display: 'flex', width: '100%', height: '100%' }}>
+            
+            {/* LEWY PANEL (Ustawienia Szafek) */}
+            <div style={{ width: '450px', padding: '20px', backgroundColor: '#f8f9fa', borderRight: '1px solid #ddd', overflowY: 'auto' }}>
+              {/* KOLORYSTYKA PROJEKTU */}
+              <div style={{ marginBottom: '20px', padding: '15px', backgroundColor: '#fff', borderRadius: '12px', border: '1px solid #ddd', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px', borderBottom: '2px solid #e9ecef', paddingBottom: '8px' }}>
+                  <h2 style={{ fontSize: '18px', margin: 0, color: '#2c3e50' }}>Kolorystyka Projektu</h2>
+                  {activeCab.type !== 'puste' && (
+                    <label style={{ fontSize: '11px', background: '#fef3c7', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', margin: 0 }}>
+                      <input type="checkbox" checked={activeCab.useCustomColors} onChange={(e) => updateActiveCab({ useCustomColors: e.target.checked })} /> inna dla tej szafki
+                    </label>
+                  )}
+                </div>
+                
+                {activeCab.type !== 'puste' && (
+                  <>
+                    {[ {l: "Fronty", v: activeCab.useCustomColors ? activeCab.fDecor : globalF, s: (v) => activeCab.useCustomColors ? updateActiveCab({fDecor: v}) : setGlobalF(v)},
+                       {l: "Korpus", v: activeCab.useCustomColors ? activeCab.bDecor : globalB, s: (v) => activeCab.useCustomColors ? updateActiveCab({bDecor: v}) : setGlobalB(v)}
+                    ].map((item, idx) => (
+                      <div key={idx} style={{ marginBottom: '12px' }}>
+                        <label style={{ fontSize: '12px', fontWeight: 'bold' }}>Płyta {item.l}:</label>
+                        <div style={{ display: 'flex', gap: '8px', marginTop: '5px', alignItems: 'center' }}>
+                          <div style={{ width: '35px', height: '35px', borderRadius: '6px', border: '1px solid #ccc', background: DEKORY[item.v].url ? `url(${DEKORY[item.v].url})` : DEKORY[item.v].color, backgroundSize: 'cover' }} />
+                          <CustomSelect value={item.v} onChange={item.s} />
+                        </div>
+                      </div>
+                    ))}
+                  </>
+                )}
+
+                <div style={{ marginTop: '15px', paddingTop: '15px', borderTop: '1px solid #eee' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', fontWeight: 'bold', fontSize: '13px', cursor: 'pointer' }}>
+                    <input type="checkbox" checked={showWorktopGlobal} onChange={(e) => setShowWorktopGlobal(e.target.checked)} style={{ width: '18px', height: '18px', marginRight: '8px' }} /> pokaż blaty
+                  </label>
+                  {showWorktopGlobal && (
+                    <div style={{ marginTop: '12px', padding: '10px', background: '#f8f9fa', borderRadius: '8px' }}>
+                      <label style={{ fontSize: '12px', fontWeight: 'bold' }}>Dekor blatu:</label>
+                      <div style={{ display: 'flex', gap: '8px', marginTop: '5px', alignItems: 'center' }}>
+                        <div style={{ width: '35px', height: '35px', borderRadius: '6px', border: '1px solid #ccc', background: DEKORY[worktopDecor].url ? `url(${DEKORY[worktopDecor].url})` : DEKORY[worktopDecor].color, backgroundSize: 'cover' }} />
+                        <CustomSelect value={worktopDecor} onChange={setWorktopDecor} />
+                      </div>
+                      <label style={{ fontSize: '11px', display: 'block', marginTop: '10px' }}>Głębokość blatu: <b>{Math.round(worktopDepth*100)} cm</b></label>
+                      <input type="range" min="0.4" max="1.2" step="0.01" value={worktopDepth} onChange={(e) => setWorktopDepth(parseFloat(e.target.value))} style={{ width: '100%' }} />
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <h2 style={{ fontSize: '18px', marginTop: '30px', marginBottom: '15px', color: '#2c3e50', borderBottom: '2px solid #e9ecef', paddingBottom: '8px' }}>
+                Wybierz / Dodaj szafkę
+              </h2>
+
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '30px', paddingBottom: '10px' }}>
+                {cabinets.map((cab, i) => (
+                  <button key={cab.id} onClick={() => setActiveIdx(i)} style={{ display: 'flex', flexDirection: 'column', gap: '5px', padding: '10px', backgroundColor: i === activeIdx ? '#2e7d32' : '#fff', color: i === activeIdx ? '#fff' : '#333', border: i === activeIdx ? '1px solid #1b5e20' : '1px solid #ddd', borderRadius: '8px', cursor: 'pointer', minWidth: '95px', alignItems: 'center' }}>
+                    <MiniaturaSzafki cab={{...cab, w: 0.6, h: 0.82}} size={40} showHandles={true} />
+                    <span style={{ fontSize: '11px', fontWeight: 'bold', textTransform: 'capitalize', textAlign: 'center' }}>
+                      {cab.type} {Math.round(cab.w * 100)}
+                    </span>
+                  </button>
+                ))}
+                <button onClick={addCabinet} style={{ padding: '10px', backgroundColor: '#2c3e50', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>+ Dodaj</button>
+              </div>
+
+              <h2 style={{ fontSize: '18px', marginBottom: '20px', color: '#2c3e50', borderBottom: '2px solid #e9ecef', paddingBottom: '8px' }}>
+                Edytuj wybraną szafkę
+              </h2>
+
+              <div style={{ marginBottom: '20px' }}>
+                <label style={{ fontSize: '13px', fontWeight: 'bold', display: 'block', marginBottom: '10px' }}>Wybierz Typ:</label>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '10px' }}>
+                  {['drzwi', 'szuflady', 'hybryda', 'puste', 'naroznik'].map(t => (
+                    <button key={t} onClick={() => {
+                      if (t === 'naroznik' && activeCab.type !== 'naroznik') updateActiveCab({ type: t, w: 1.0, w2: 1.0 });
+                      else if (t !== 'naroznik' && activeCab.type === 'naroznik') updateActiveCab({ type: t, w: 0.6 });
+                      else updateActiveCab({ type: t });
+                    }} style={{ width: 'calc(50% - 4px)', padding: '15px 5px', backgroundColor: activeCab.type === t ? '#eef2f3' : '#fff', border: `2px solid ${activeCab.type === t ? '#40c057' : '#ddd'}`, borderRadius: '10px', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                      <MiniaturaSzafki cab={{...activeCab, type: t, w: 0.6, h: 0.82}} size={45} showHandles={true} />
+                      <div style={{ fontSize: '10px', marginTop: '8px', textTransform: 'uppercase', fontWeight: 'bold' }}>{t}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div style={{ padding: '15px', backgroundColor: '#fff', borderRadius: '12px', border: '1px solid #ddd' }}>
+                
+                <div style={{ margin: '0 0 15px 0', padding: '10px', border: '1px solid #ffd8a8', background: '#fff9db', borderRadius: '8px' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', fontSize: '13px', fontWeight: 'bold', cursor: 'pointer' }}>
+                    <input type="checkbox" checked={activeCab.hasWorktop} onChange={(e) => updateActiveCab({hasWorktop: e.target.checked})} style={{ marginRight: '10px' }} /> Blat nad tą sekcją
+                  </label>
+                </div>
+
+                <div style={{ marginBottom: '15px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '4px' }}>
+                    <label>Szerokość sekcji {activeCab.type === 'naroznik' && '(Ramię 1)'}: <b>
+                      {activeCab.type === 'naroznik' ? Math.round((activeCab.w - 0.5 + (activeCab.d2 || 0.5)) * 100) : Math.round(activeCab.w * 100)} cm
+                    </b></label>
+                    {activeCab.type === 'naroznik' && <span style={{ fontSize: '11px', color: '#d35400', fontWeight: 'bold' }}>Front: {Math.round((activeCab.w - 0.5)*100)} cm</span>}
+                  </div>
+                  <input type="range" min="0.15" max="1.5" step="0.01" 
+                    value={activeCab.type === 'naroznik' ? activeCab.w - 0.5 + (activeCab.d2 || 0.5) : activeCab.w} 
+                    onChange={(e) => {
+                      const val = parseFloat(e.target.value);
+                      if (activeCab.type === 'naroznik') updateActiveCab({w: val - (activeCab.d2 || 0.5) + 0.5});
+                      else updateActiveCab({w: val});
+                    }} 
+                    style={{ width: '100%' }} 
+                  />
+                </div>
+                
+                {activeCab.type !== 'puste' && (
+                  <>
+                    <div style={{ marginBottom: '15px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '4px' }}>
+                        <label>Głębokość {activeCab.type === 'naroznik' && '(Ramię 1)'}: <b>{Math.round(activeCab.d*100)} cm</b></label>
+                      </div>
+                      <input type="range" min="0.3" max="0.7" step="0.01" value={activeCab.d} onChange={(e) => updateActiveCab({d: parseFloat(e.target.value)})} style={{ width: '100%' }} />
+                    </div>
+
+                    {activeCab.type === 'naroznik' && (
+                      <>
+                        <div style={{ marginBottom: '15px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '4px' }}>
+                            <label>Szerokość (Ramię 2): <b>{Math.round(((activeCab.w2||0.9) - 0.5 + activeCab.d)*100)} cm</b></label>
+                            <span style={{ fontSize: '11px', color: '#d35400', fontWeight: 'bold' }}>Front: {Math.round(((activeCab.w2||0.9) - 0.5)*100)} cm</span>
+                          </div>
+                          <input type="range" min="0.5" max="1.5" step="0.01" value={(activeCab.w2||0.9) - 0.5 + activeCab.d} onChange={(e) => updateActiveCab({w2: parseFloat(e.target.value) - activeCab.d + 0.5})} style={{ width: '100%' }} />
+                        </div>
+                        
+                        <div style={{ marginBottom: '15px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '4px' }}>
+                            <label>Głębokość (Ramię 2): <b>{Math.round((activeCab.d2||0.5)*100)} cm</b></label>
+                          </div>
+                          <input type="range" min="0.3" max="0.7" step="0.01" value={activeCab.d2 || 0.5} onChange={(e) => updateActiveCab({d2: parseFloat(e.target.value)})} style={{ width: '100%' }} />
+                        </div>
+                        
+                        <div style={{ marginBottom: '20px', padding: '10px', backgroundColor: '#f8f9fa', border: '1px solid #e9ecef', borderRadius: '8px' }}>
+                          <label style={{ fontSize: '12px', fontWeight: 'bold' }}>Kierunek skrętu ciągu szafek:</label>
+                          <select value={activeCab.cornerSide} onChange={(e) => updateActiveCab({cornerSide: e.target.value})} style={{ width: '100%', padding: '6px', marginTop: '8px', borderRadius: '4px', border: '1px solid #ccc' }}>
+                            <option value="prawy">Prawy (skręca w prawo)</option>
+                            <option value="lewy">Lewy (skręca w lewo)</option>
+                          </select>
+                        </div>
+                      </>
+                    )}
+
+                    <div style={{ marginBottom: '20px' }}><label>Wysokość korpusu: <b>{Math.round(activeCab.h*100)} cm</b></label><input type="range" min="0.4" max="2.2" step="0.01" value={activeCab.h} onChange={(e) => updateActiveCab({h: parseFloat(e.target.value)})} style={{ width: '100%' }} /></div>
+
+                    {activeCab.type === 'hybryda' && (
+                      <div style={{ marginBottom: '20px', padding: '12px', backgroundColor: '#f1f3f5', borderRadius: '10px' }}>
+                        <label style={{ fontSize: '12px' }}>Układ:</label>
+                        <select value={activeCab.order} onChange={(e) => updateActiveCab({order: e.target.value})} style={{ width: '100%', padding: '8px', margin: '5px 0' }}><option value="szuflady-gora">Szuflady góra</option><option value="szuflady-dol">Szuflady dół</option></select>
+                        <label style={{ fontSize: '12px' }}>Podział: {activeCab.split}%</label><input type="range" min="15" max="85" value={activeCab.split} onChange={(e) => updateActiveCab({split: parseInt(e.target.value)})} style={{ width: '100%' }} />
+                      </div>
+                    )}
+
+                    {activeCab.type !== 'drzwi' && activeCab.type !== 'naroznik' && (
+                      <div style={{ marginBottom: '20px', padding: '12px', backgroundColor: '#f1f3f5', borderRadius: '10px' }}>
+                        <label style={{ fontSize: '13px', fontWeight: 'bold' }}>Liczba szuflad: {activeCab.drawersC}</label>
+                        <input type="range" min="1" max="4" value={activeCab.drawersC} onChange={(e) => { const c = parseInt(e.target.value); updateActiveCab({ drawersC: c, ratios: Array(c).fill(100/c) }); }} style={{ width: '100%' }} />
+                        {(activeCab.ratios || []).map((r, i) => (
+                          <div key={i} style={{ marginTop: '10px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px' }}><span>Szuflada {i+1}</span><b>{((r/100)*(activeCab.h * (activeCab.type==='hybryda' ? activeCab.split/100 : 1))*100).toFixed(1)} cm</b></div>
+                            <input type="range" min="10" max="80" step="0.1" value={r} onChange={(e) => handleRatio(i, e.target.value)} style={{ width: '100%' }} />
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {activeCab.type === 'drzwi' && (
+                      <div style={{ marginBottom: '20px', padding: '12px', backgroundColor: '#f1f3f5', borderRadius: '10px' }}>
+                        <div style={{ display: 'flex', gap: '10px' }}>
+                          <div style={{ flex: 1 }}><label style={{ fontSize: '11px' }}>Drzwi:</label><select value={activeCab.doorsC} onChange={(e) => updateActiveCab({doorsC: parseInt(e.target.value)})} style={{ width: '100%' }}><option value={1}>1 Front</option><option value={2}>2 Fronty</option></select></div>
+                          {activeCab.doorsC === 1 && <div style={{ flex: 1 }}><label style={{ fontSize: '11px' }}>Strona:</label><select value={activeCab.doorDirection} onChange={(e) => updateActiveCab({doorDirection: e.target.value})} style={{ width: '100%' }}><option value="left">Lewa</option><option value="right">Prawa</option></select></div>}
+                        </div>
+                      </div>
+                    )}
+
+                    {['drzwi', 'hybryda', 'naroznik'].includes(activeCab.type) && (
+                      <div style={{ marginBottom: '20px', padding: '12px', backgroundColor: '#e3f2fd', borderRadius: '10px', border: '1px solid #90caf9' }}>
+                        <label style={{ fontSize: '13px', fontWeight: 'bold' }}>Liczba półek w środku: {activeCab.shelvesC || 0}</label>
+                        <input type="range" min="0" max="5" value={activeCab.shelvesC || 0} onChange={(e) => updateActiveCab({shelvesC: parseInt(e.target.value)})} style={{ width: '100%', marginTop: '5px' }} />
+                      </div>
+                    )}
+
+                    <label style={{ fontSize: '15px', fontWeight: 'bold', display: 'flex', alignItems: 'center', cursor: 'pointer', marginTop: '10px' }}>
+                      <input type="checkbox" checked={activeCab.softClose} onChange={(e) => updateActiveCab({softClose: e.target.checked})} style={{ marginRight: '10px' }} /> Cichy domyk
+                    </label>
+
+                    <label style={{ fontSize: '15px', fontWeight: 'bold', display: 'flex', alignItems: 'center', cursor: 'pointer', marginTop: '10px', color: '#d35400' }}>
+                      <input type="checkbox" checked={activeCab.reverseFront || false} onChange={(e) => updateActiveCab({reverseFront: e.target.checked})} style={{ marginRight: '10px' }} /> Obróć front o 180° (Układ U / Wyspa)
+                    </label>
+
+                    <div style={{ marginTop: '10px' }}><label style={{ fontSize: '12px' }}>Podstawa:</label><select value={activeCab.baseType} onChange={(e) => updateActiveCab({baseType: e.target.value})} style={{ width: '100%', padding: '5px' }}>
+                      <option value="nozki_regulowane">Nóżki regulowane</option><option value="cokol">Pełna skrzynia cokołowa</option>
+                    </select></div>
+                  </>
+                )}
+
+                <div style={{ marginTop: '20px', display: 'flex', gap: '10px' }}>
+                  <button onClick={() => moveActiveCab(-1)} disabled={activeIdx === 0} style={{ flex: 1, padding: '10px', backgroundColor: '#e9ecef', border: '1px solid #ced4da', borderRadius: '8px', cursor: activeIdx === 0 ? 'not-allowed' : 'pointer', fontSize: '12px', fontWeight: 'bold' }}>⬅️ Przesuń w lewo</button>
+                  <button onClick={() => moveActiveCab(1)} disabled={activeIdx === cabinets.length - 1} style={{ flex: 1, padding: '10px', backgroundColor: '#e9ecef', border: '1px solid #ced4da', borderRadius: '8px', cursor: activeIdx === cabinets.length - 1 ? 'not-allowed' : 'pointer', fontSize: '12px', fontWeight: 'bold' }}>Przesuń w prawo ➡️</button>
+                </div>
+
+                {cabinets.length > 1 && <button onClick={() => { setCabinets(cabinets.filter((_, i) => i !== activeIdx)); setActiveIdx(0); }} style={{ width: '100%', marginTop: '10px', padding: '12px', backgroundColor: '#fa5252', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>Usuń szafkę</button>}
+              </div>
+
+              <div style={{ marginTop: '20px', padding: '20px', backgroundColor: '#2c3e50', color: '#40c057', borderRadius: '12px', textAlign: 'center', fontSize: '28px', fontWeight: 'bold' }}>{finalPrice} zł</div>
+            </div>
+
+            {/* PRAWY PANEL (Canvas 3D) */}
+            <div style={{ flex: 1 }}>
+              <Canvas camera={{ position: [sceneCenter[0] - 4, 1.8, sceneCenter[2]], fov: 55 }}>
+                <ambientLight intensity={0.9} /><pointLight position={[10, 10, 10]} intensity={1.5} /><directionalLight position={[-5, 5, -5]} intensity={1} />
+                <Suspense fallback={null}>
+                  {/* TUTAJ WSTAWIAMY NASZE ŚCIANY */}
+                  <Walls3D nodes={wallNodes} />
+                  {layout.map((item, index) => {
+                    const cab = cabinets[index];
+                    const f = DEKORY[cab.useCustomColors ? cab.fDecor : globalF];
+                    const b = DEKORY[cab.useCustomColors ? cab.bDecor : globalB];
+                    
+                    const wtCenterZ = (cab.d / 2 + 0.03) - (worktopDepth / 2);
+                    
+                    let cornersBefore = 0;
+                    for(let i = 0; i < index; i++) {
+                      if(cabinets[i].type === 'naroznik') cornersBefore++;
+                    }
+
+                    const shouldFlip = cornersBefore === 2;
+                    const isFlipped = cab.reverseFront ? !shouldFlip : shouldFlip;
+
+                    return (
+                      <group key={cab.id} position={item.pos} rotation={[0, item.rot, 0]}>
+                        {cab.type === 'naroznik' ? (
+                           <group rotation={[0, isFlipped ? Math.PI : 0, 0]}>
+                            <SzafkaNarozna cab={cab} dekorFront={f} dekorBody={b} />
+                           </group>
+                        ) : (
+                           <group rotation={[0, isFlipped ? Math.PI : 0, 0]}>
+                             <Szafka 
+                               width={cab.w} height={cab.h} depth={cab.d} dekorFront={f} dekorBody={b} 
+                               type={cab.type} baseType={cab.baseType} doorCount={cab.doorsC} 
+                               doorDirection={cab.doorDirection} drawersCount={cab.drawersC} 
+                               shelvesCount={cab.shelvesC} drawerRatios={cab.ratios} 
+                               hybridSplit={cab.split} hybridOrder={cab.order} 
+                             />
+                           </group>
+                        )}
+                        
+                        {showWorktopGlobal && cab.hasWorktop && cab.type !== 'puste' && (() => {
+                           const nextCorners = cornersBefore + 1;
+                           const nextShouldFlip = nextCorners === 2;
+                           const nextIsFlipped = cab.reverseFront ? !nextShouldFlip : nextShouldFlip;
+                           
+                           return cab.type === 'naroznik' ? (
+                             <group position={[0, cab.h + 0.119, 0]} rotation={[0, isFlipped ? Math.PI : 0, 0]}>
+                               <mesh position={[(cab.cornerSide==='prawy'?1:-1) * (worktopDepth - 0.5 - 0.03) / 2, 0, (0.5 / 2 + 0.03) - (worktopDepth / 2)]}>
+                                 <boxGeometry args={[cab.w + (worktopDepth - 0.5 - 0.03) + 0.001, 0.038, worktopDepth]} />
+                                 <PłytaMaterial dekor={DEKORY[worktopDecor]} w={cab.w + (worktopDepth - 0.5 - 0.03)} h={worktopDepth} rotate offsetX={isFlipped ? item.dist + cab.w + (cab.cornerSide === 'lewy' ? (worktopDepth - 0.5 - 0.03) : 0) - (cabinets[index - 1] ? cabinets[index - 1].w : 0.6) : item.dist} offsetY={isFlipped ? -(item.crossDist + (wtCenterZ * 2)) : item.crossDist} />
+                               </mesh>
+                               <mesh position={[(cab.cornerSide==='prawy'?1:-1) * (cab.w/2 - 0.5 - 0.03 + worktopDepth/2), 0, (cab.w2||0.9)/2 + 0.015]} rotation={[0, (cab.cornerSide === 'prawy' ? -Math.PI / 2 : Math.PI / 2) + (isFlipped !== nextIsFlipped ? Math.PI : 0), 0]}>
+                                 <boxGeometry args={[(cab.w2||0.9) - 0.5 - 0.03 + 0.001, 0.038, worktopDepth]} />
+                                 <PłytaMaterial dekor={DEKORY[worktopDecor]} w={(cab.w2||0.9) - 0.5 - 0.03} h={worktopDepth} rotate offsetX={nextIsFlipped ? -(item.dist + cab.w + 0.03) : (item.dist + cab.w + 0.03)} offsetY={item.crossDist + (cab.cornerSide === 'prawy' ? 0.07 : -0.07) + (nextIsFlipped ? (wtCenterZ * 2) : 0)} />
+                               </mesh>
+                             </group>
+                           ) : (
+                             <mesh position={[0, cab.h + 0.119, isFlipped ? -wtCenterZ : wtCenterZ]}>
+                               <boxGeometry args={[cab.w + 0.001, 0.038, worktopDepth]} />
+                               <PłytaMaterial dekor={DEKORY[worktopDecor]} w={cab.w} h={worktopDepth} rotate offsetX={isFlipped ? -item.dist : item.dist} offsetY={item.crossDist + (isFlipped ? (wtCenterZ * 2) : 0)} />
+                             </mesh>
+                           );
+                        })()}
+                      </group>
+                    );
+                  })}
+                </Suspense>
+                <OrbitControls makeDefault target={sceneCenter} enablePan={true} />
+              </Canvas>
+            </div>
+          </div>
+        )}
+
       </div>
     </div>
   );
