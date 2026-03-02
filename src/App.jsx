@@ -882,13 +882,24 @@ export default function App() {
               
               const wtCenterZ = (cab.d / 2 + 0.03) - (worktopDepth / 2);
               
-              // Sprytne połączenie: jeśli minęliśmy 2 narożnik (autoFlip), odwracamy szafkę. 
-              const isFlipped = cab.type !== 'naroznik' && (cab.reverseFront ? !item.autoFlip : item.autoFlip);
+              // --- INTELIGENTNA LOGIKA OBROTU ---
+              // 1. Liczymy ile narożników było przed tą konkretną szafką
+              let cornersBefore = 0;
+              for(let i = 0; i < index; i++) {
+                if(cabinets[i].type === 'naroznik') cornersBefore++;
+              }
+
+              // 2. Odwracamy TYLKO szafki w 3. ramieniu (czyli mające dokładnie 2 narożniki przed sobą). 
+              // 4. ramię (po 3 narożniku) naturalnie patrzy do środka, więc nie potrzebuje obrotu!
+              const shouldFlip = cornersBefore === 2;
+              const isFlipped = cab.reverseFront ? !shouldFlip : shouldFlip;
 
               return (
                 <group key={cab.id} position={item.pos} rotation={[0, item.rot, 0]}>
                   {cab.type === 'naroznik' ? (
-                     <SzafkaNarozna cab={cab} dekorFront={f} dekorBody={b} />
+                     <group rotation={[0, isFlipped ? Math.PI : 0, 0]}>
+                      <SzafkaNarozna cab={cab} dekorFront={f} dekorBody={b} />
+                     </group>
                   ) : (
                      <group rotation={[0, isFlipped ? Math.PI : 0, 0]}>
                        <Szafka 
@@ -903,7 +914,7 @@ export default function App() {
                   
                   {showWorktopGlobal && cab.hasWorktop && cab.type !== 'puste' && (
                      cab.type === 'naroznik' ? (
-                       <group position={[0, cab.h + 0.119, 0]}>
+                       <group position={[0, cab.h + 0.119, 0]} rotation={[0, isFlipped ? Math.PI : 0, 0]}>
                          {/* Blat GŁÓWNY narożnika (Wydłużony do ściany - omija suwaki i trzyma linię) */}
                          <mesh position={[(cab.cornerSide==='prawy'?1:-1) * (worktopDepth - 0.5 - 0.03) / 2, 0, (0.5 / 2 + 0.03) - (worktopDepth / 2)]}>
                            <boxGeometry args={[cab.w + (worktopDepth - 0.5 - 0.03) + 0.001, 0.038, worktopDepth]} />
