@@ -566,6 +566,10 @@ export default function App() {
   const [wallNodes, setWallNodes] = useState([]); // W przyszłości tu będziemy trzymać narysowane ściany w 2D
   const [previewNode, setPreviewNode] = useState(null);
   const [isHoveringStart, setIsHoveringStart] = useState(false);
+  const [kitchenStart, setKitchenStart] = useState(null);
+  const [previewKitchenStart, setPreviewKitchenStart] = useState(null);
+  const [kitchenFlip, setKitchenFlip] = useState(false); // Opcja odbicia lustrzanego
+
   const [cabinets, setCabinets] = useState([{ ...DOMYSLNA_SZAFKA, id: Date.now() }]);
   const [activeIdx, setActiveIdx] = useState(0);
   const [showWorktopGlobal, setShowWorktopGlobal] = useState(false);
@@ -600,53 +604,95 @@ export default function App() {
 
   const finalPrice = cabinets.reduce((sum, cab) => sum + (cab.type === 'puste' ? 0 : Math.round((cab.w * cab.h * cab.d * 1150) + (cab.type !== 'drzwi' ? cab.drawersC * 180 : 95))), 0);
 
-// SILNIK UKŁADU KUCHNI 
+// SILNIK UKŁADU KUCHNI
   const layout = useMemo(() => {
-    const result = [];
-    const cursor = new THREE.Object3D();
-    cursor.position.set(0, 0, 0);
+    if (!kitchenStart) {
+      const res = [];
+      const cur = new THREE.Object3D();
+      let rD = 0; let cD = 0;
+      cabinets.forEach((cab) => {
+        cur.translateX(cab.w / 2);
+        cur.updateMatrixWorld();
+        res.push({ id: cab.id, pos: [cur.position.x, 0, cur.position.z], rot: cur.rotation.y, dist: rD, crossDist: cD });
+        cur.translateX(cab.w / 2); rD += cab.w;
+        if (cab.type === 'naroznik') {
+          const safeW2 = cab.w2 || 1.0;
+          if (cab.cornerSide === 'prawy') {
+            cur.translateX(-0.25); cur.translateZ(safeW2 - 0.25); cur.rotateY(-Math.PI / 2); cD += 0.07;
+          } else {
+            cur.translateX(-cab.w + 0.25); cur.translateZ(safeW2 - 0.25); cur.rotateY(Math.PI / 2); cD -= 0.07;
+          }
+          rD += safeW2 - 0.5;
+        }
+      });
+      return res;
+    }
 
-    let runDist = 0; 
-    let crossDist = 0; 
-    let cornerCount = 0; // NOWY LICZNIK NAROŻNIKÓW
+    const localResult = [];
+    const localCursor = new THREE.Object3D();
+    let runDist = 0; let crossDist = 0;
+
+    // Magiczna matematyka - decyduje czy musimy "odbić" układ
+    const shouldFlip = (!kitchenStart.isClockwise) !== kitchenFlip;
 
     cabinets.forEach((cab) => {
-      cursor.translateX(cab.w / 2);
-      cursor.updateMatrixWorld();
-      
-      result.push({ 
-        id: cab.id, 
-        pos: [cursor.position.x, 0, cursor.position.z], 
-        rot: cursor.rotation.y,
-        dist: runDist,
-        crossDist: crossDist,
-        autoFlip: cornerCount >= 2 // WYKONANIE POLECENIA: Obróć wszystko po 2 narożniku
-      });
-
-      cursor.translateX(cab.w / 2); 
-      runDist += cab.w; 
+      localCursor.translateX(cab.w / 2);
+      localCursor.updateMatrixWorld();
+      localResult.push({ id: cab.id, pos: [localCursor.position.x, 0, localCursor.position.z], rot: localCursor.rotation.y, dist: runDist, crossDist: crossDist });
+      localCursor.translateX(cab.w / 2);
+      runDist += cab.w;
 
       if (cab.type === 'naroznik') {
-        cornerCount++;
-        const isRight = cab.cornerSide === 'prawy';
+        const isRight = (cab.cornerSide === 'prawy') !== shouldFlip;
         const safeW2 = cab.w2 || 1.0;
-        
         if (isRight) {
-          cursor.translateX(-0.25); 
-          cursor.translateZ(safeW2 - 0.25); 
-          cursor.rotateY(-Math.PI / 2);
-          crossDist += 0.07; 
+          localCursor.translateX(-0.25); localCursor.translateZ(safeW2 - 0.25); localCursor.rotateY(-Math.PI / 2); crossDist += 0.07;
         } else {
-          cursor.translateX(-cab.w + 0.25); 
-          cursor.translateZ(safeW2 - 0.25);
-          cursor.rotateY(Math.PI / 2);
-          crossDist -= 0.07; 
+          localCursor.translateX(-cab.w + 0.25); localCursor.translateZ(safeW2 - 0.25); localCursor.rotateY(Math.PI / 2); crossDist -= 0.07;
         }
-        runDist += safeW2 - 0.5; 
+        runDist += safeW2 - 0.5;
       }
     });
-    return result;
-  }, [cabinets]);
+
+    const worldCursor = new THREE.Object3D();
+    worldCursor.position.set(kitchenStart.x, 0, kitchenStart.z);
+    worldCursor.rotation.y = Math.atan2(kitchenStart.inDx, kitchenStart.inDz); // BEZWZGLĘDNE FRONTEM DO ŚRODKA POKOJU
+    worldCursor.translateZ((cabinets[0]?.d || 0.5) / 2);
+    worldCursor.updateMatrixWorld();
+
+    const finalResult = [];
+    localResult.forEach(item => {
+      const dummy = new THREE.Object3D();
+      dummy.position.set(item.pos[0], item.pos[1], item.pos[2]);
+      dummy.rotation.y = item.rot;
+
+      if (shouldFlip) {
+        dummy.position.x = -dummy.position.x;
+        dummy.rotation.y = -dummy.rotation.y;
+      }
+
+      worldCursor.add(dummy);
+      worldCursor.updateMatrixWorld();
+
+      const worldPos = new THREE.Vector3();
+      dummy.getWorldPosition(worldPos);
+      const worldQuat = new THREE.Quaternion();
+      dummy.getWorldQuaternion(worldQuat);
+      const euler = new THREE.Euler().setFromQuaternion(worldQuat, 'YXZ');
+
+      worldCursor.remove(dummy);
+
+      finalResult.push({
+        id: item.id,
+        pos: [worldPos.x, worldPos.y, worldPos.z],
+        rot: euler.y,
+        dist: item.dist,
+        crossDist: item.crossDist
+      });
+    });
+
+    return finalResult;
+  }, [cabinets, kitchenStart, kitchenFlip]);
 
   // ŚLEDZENIE ŚRODKA SCENY PRZEZ KAMERĘ
   const sceneCenter = useMemo(() => {
@@ -743,47 +789,85 @@ export default function App() {
               style={{ width: '600px', height: '600px', backgroundColor: 'white', border: '2px solid #bdc3c7', borderRadius: '8px', position: 'relative', cursor: isHoveringStart ? 'pointer' : 'crosshair', boxShadow: '0 4px 15px rgba(0,0,0,0.1)', flexShrink: 0 }}
               onMouseMove={(e) => {
                 const isRoomClosed = wallNodes.length > 2 && wallNodes[0].x === wallNodes[wallNodes.length - 1].x && wallNodes[0].z === wallNodes[wallNodes.length - 1].z;
-                if (isRoomClosed) return;
-
+                
                 const rect = e.currentTarget.getBoundingClientRect();
                 const px = e.clientX - rect.left;
                 const pz = e.clientY - rect.top;
                 
-                // --- ZMIANA: Skala 1m = 120px. Krok co 1cm! ---
                 let x = Math.round((px - 300) / 1.2) / 100;
                 let z = Math.round((pz - 300) / 1.2) / 100;
 
+                // --- NOWOŚĆ: WYKRYWANIE ŚCIAN DLA STARTU KUCHNI ---
+                if (isRoomClosed) {
+                  let area = 0;
+                  for (let i = 0; i < wallNodes.length - 1; i++) {
+                    area += (wallNodes[i+1].x - wallNodes[i].x) * (wallNodes[i+1].z + wallNodes[i].z);
+                  }
+                  const isClockwise = area < 0;
+
+                  let minDist = Infinity;
+                  let bestPoint = null;
+                  let bestAngle = 0;
+                  let bestInDx = 0;
+                  let bestInDz = 0;
+
+                  for (let i = 0; i < wallNodes.length - 1; i++) {
+                    const A = wallNodes[i]; const B = wallNodes[i+1];
+                    const dx = B.x - A.x; const dz = B.z - A.z;
+                    const lenSq = dx*dx + dz*dz;
+                    if (lenSq === 0) continue;
+
+                    let t = ((x - A.x)*dx + (z - A.z)*dz) / lenSq;
+                    t = Math.max(0, Math.min(1, t)); 
+                    
+                    const projX = A.x + t * dx;
+                    const projZ = A.z + t * dz;
+                    const distSq = (x - projX)**2 + (z - projZ)**2;
+
+                    if (distSq < minDist) {
+                      minDist = distSq;
+                      bestPoint = { x: projX, z: projZ };
+                      
+                      const len = Math.sqrt(lenSq);
+                      const inDx = isClockwise ? -dz/len : dz/len;
+                      const inDz = isClockwise ? dx/len : -dx/len;
+                      bestInDx = inDx;
+                      bestInDz = inDz;
+                      bestAngle = Math.atan2(inDx, inDz); 
+                    }
+                  }
+                  if (minDist < 0.25) setPreviewKitchenStart({ ...bestPoint, angle: bestAngle, inDx: bestInDx, inDz: bestInDz, isClockwise });
+                  else setPreviewKitchenStart(null);
+                  return;
+                }
+
+                // ... reszta standardowego rysowania
                 if (wallNodes.length > 2) {
-                  // Mnożnik x120
                   const firstPx = wallNodes[0].x * 120 + 300;
                   const firstPz = wallNodes[0].z * 120 + 300;
                   const distance = Math.sqrt(Math.pow(px - firstPx, 2) + Math.pow(pz - firstPz, 2));
-                  
-                  if (distance < 30) {
-                    setIsHoveringStart(true);
-                    setPreviewNode(wallNodes[0]);
-                    return; 
-                  }
+                  if (distance < 30) { setIsHoveringStart(true); setPreviewNode(wallNodes[0]); return; }
                 }
                 setIsHoveringStart(false);
 
                 if (wallNodes.length > 0) {
                   const last = wallNodes[wallNodes.length - 1];
-                  if (Math.abs(x - last.x) > Math.abs(z - last.z)) z = last.z; 
-                  else x = last.x; 
+                  if (Math.abs(x - last.x) > Math.abs(z - last.z)) z = last.z; else x = last.x; 
                 }
                 setPreviewNode({ x, z });
               }}
-              onMouseLeave={() => { setPreviewNode(null); setIsHoveringStart(false); }}
+              onMouseLeave={() => { setPreviewNode(null); setIsHoveringStart(false); setPreviewKitchenStart(null); }}
               onClick={() => {
                 const isRoomClosed = wallNodes.length > 2 && wallNodes[0].x === wallNodes[wallNodes.length - 1].x && wallNodes[0].z === wallNodes[wallNodes.length - 1].z;
-                if (isRoomClosed || !previewNode) return;
-
-                if (isHoveringStart && wallNodes.length > 2) {
-                  zamykajZOptymalizacja();
+                
+                // --- NOWOŚĆ: ZATWIERDZENIE STARTU KUCHNI ---
+                if (isRoomClosed) {
+                  if (previewKitchenStart) setKitchenStart(previewKitchenStart);
                   return;
                 }
 
+                if (!previewNode) return;
+                if (isHoveringStart && wallNodes.length > 2) { zamykajZOptymalizacja(); return; }
                 if (wallNodes.length > 0 && previewNode.x === wallNodes[wallNodes.length - 1].x && previewNode.z === wallNodes[wallNodes.length - 1].z) return;
                 setWallNodes([...wallNodes, previewNode]);
               }}
@@ -871,9 +955,57 @@ export default function App() {
                 )}
                 {/* Podgląd kursora (Mnożnik x120) */}
                 {previewNode && !isHoveringStart && !(wallNodes.length > 2 && wallNodes[0].x === wallNodes[wallNodes.length - 1].x && wallNodes[0].z === wallNodes[wallNodes.length - 1].z) && <circle cx={previewNode.x * 120 + 300} cy={previewNode.z * 120 + 300} r="5" fill="#3498db" opacity="0.6" />}
+              {/* --- NOWOŚĆ: WIZUALIZACJA STARTU KUCHNI W SVG --- */}
+                {wallNodes.length > 2 && wallNodes[0].x === wallNodes[wallNodes.length - 1].x && wallNodes[0].z === wallNodes[wallNodes.length - 1].z && previewKitchenStart && !kitchenStart && (
+                  <circle cx={previewKitchenStart.x * 120 + 300} cy={previewKitchenStart.z * 120 + 300} r="8" fill="#40c057" opacity="0.6" />
+                )}
+                
+                {kitchenStart && (() => {
+                  const inX = kitchenStart.inDx; 
+                  const inZ = kitchenStart.inDz; 
+                  
+                  let walkMult = kitchenStart.isClockwise ? 1 : -1;
+                  if (kitchenFlip) walkMult *= -1;
+                  
+                  const dirX = walkMult * kitchenStart.inDz;
+                  const dirZ = walkMult * -kitchenStart.inDx;
+                  
+                  return (
+                    <g transform={`translate(${kitchenStart.x * 120 + 300}, ${kitchenStart.z * 120 + 300})`}>
+                      <line x1="0" y1="0" x2={dirX * 60} y2={dirZ * 60} stroke="#2e7d32" strokeWidth="5" strokeLinecap="round" />
+                      <circle cx={dirX * 60} cy={dirZ * 60} r="5" fill="#2e7d32" />
+                      
+                      <line x1="0" y1="0" x2={inX * 30} y2={inZ * 30} stroke="#f39c12" strokeWidth="3" strokeDasharray="4,4" />
+                      <circle cx="0" cy="0" r="10" fill="#2e7d32" />
+                      <circle cx="0" cy="0" r="16" fill="none" stroke="#2e7d32" strokeWidth="2" opacity="0.5" />
+                      
+                      <rect x="-40" y="-35" width="80" height="20" fill="white" rx="4" opacity="0.9" stroke="#2e7d32" strokeWidth="1" />
+                      <text x="0" y="-21" textAnchor="middle" alignmentBaseline="middle" fontSize="11" fontWeight="bold" fill="#2e7d32">Start Kuchni</text>
+                    </g>
+                  );
+                })()}
               </svg>
-            </div>
 
+            </div>
+{/* ... tutaj u Ciebie kończy się </svg></div> ... */}
+
+            {/* --- BRAKUJĄCA INORMACJA O STARCIE I PRZYCISK ODBICIA --- */}
+            {wallNodes.length > 2 && wallNodes[0].x === wallNodes[wallNodes.length - 1].x && wallNodes[0].z === wallNodes[wallNodes.length - 1].z && (
+              <div style={{ marginTop: '20px', padding: '15px', backgroundColor: '#e3f2fd', borderRadius: '8px', border: '1px solid #90caf9', textAlign: 'center', width: '100%', maxWidth: '600px', boxSizing: 'border-box' }}>
+                {!kitchenStart ? (
+                  <h3 style={{ color: '#0277bd', margin: 0, fontSize: '15px' }}>👆 Świetnie! Teraz najedź na narysowaną ścianę i kliknij, aby postawić punkt STARTU kuchni.</h3>
+                ) : (
+                  <>
+                    <h3 style={{ color: '#2e7d32', margin: '0 0 10px 0', fontSize: '15px' }}>✅ Start kuchni zapisany.</h3>
+                    <button onClick={() => setKitchenFlip(!kitchenFlip)} style={{ padding: '10px 20px', backgroundColor: '#f39c12', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', width: '100%' }}>
+                      🔄 Pomarańczowa strzałka (lub szafki w 3D) wylądowały na zewnątrz pokoju? Kliknij tu!
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+
+            
             {/* --- NOWOŚĆ: INTERFEJS DO RĘCZNEJ EDYCJI DŁUGOŚCI ŚCIAN --- */}
             {wallNodes.length > 1 && (
               <div style={{ marginTop: '20px', width: '100%', maxWidth: '600px', backgroundColor: 'white', padding: '15px', borderRadius: '8px', border: '1px solid #bdc3c7', boxShadow: '0 2px 10px rgba(0,0,0,0.05)' }}>
@@ -1134,9 +1266,12 @@ export default function App() {
                       <input type="checkbox" checked={activeCab.softClose} onChange={(e) => updateActiveCab({softClose: e.target.checked})} style={{ marginRight: '10px' }} /> Cichy domyk
                     </label>
 
-                    <label style={{ fontSize: '15px', fontWeight: 'bold', display: 'flex', alignItems: 'center', cursor: 'pointer', marginTop: '10px', color: '#d35400' }}>
-                      <input type="checkbox" checked={activeCab.reverseFront || false} onChange={(e) => updateActiveCab({reverseFront: e.target.checked})} style={{ marginRight: '10px' }} /> Obróć front o 180° (Układ U / Wyspa)
-                    </label>
+                    {/* NOWA OPCJA: OBRACANIE O 180 STOPNI (Zablokowana dla narożników) */}
+              {activeCab.type !== 'naroznik' && (
+                <label style={{ fontSize: '15px', fontWeight: 'bold', display: 'flex', alignItems: 'center', cursor: 'pointer', marginTop: '10px', color: '#d35400' }}>
+                  <input type="checkbox" checked={activeCab.reverseFront || false} onChange={(e) => updateActiveCab({reverseFront: e.target.checked})} style={{ marginRight: '10px' }} /> Obróć front o 180° (Układ U / Wyspa)
+                </label>
+              )}
 
                     <div style={{ marginTop: '10px' }}><label style={{ fontSize: '12px' }}>Podstawa:</label><select value={activeCab.baseType} onChange={(e) => updateActiveCab({baseType: e.target.value})} style={{ width: '100%', padding: '5px' }}>
                       <option value="nozki_regulowane">Nóżki regulowane</option><option value="cokol">Pełna skrzynia cokołowa</option>
@@ -1163,64 +1298,86 @@ export default function App() {
                   {/* TUTAJ WSTAWIAMY NASZE ŚCIANY */}
                   <Walls3D nodes={wallNodes} />
                   {layout.map((item, index) => {
-                    const cab = cabinets[index];
-                    const f = DEKORY[cab.useCustomColors ? cab.fDecor : globalF];
-                    const b = DEKORY[cab.useCustomColors ? cab.bDecor : globalB];
-                    
-                    const wtCenterZ = (cab.d / 2 + 0.03) - (worktopDepth / 2);
-                    
-                    let cornersBefore = 0;
-                    for(let i = 0; i < index; i++) {
-                      if(cabinets[i].type === 'naroznik') cornersBefore++;
-                    }
+              const cab = cabinets[index];
+              const f = DEKORY[cab.useCustomColors ? cab.fDecor : globalF];
+              const b = DEKORY[cab.useCustomColors ? cab.bDecor : globalB];
+              
+              const wtCenterZ = (cab.d / 2 + 0.03) - (worktopDepth / 2);
+              
+              // --- LOGIKA OBROTU ---
+              // Silnik 3D naturalnie zgina się ze ścianami, więc szafki ZAWSZE patrzą do środka pokoju!
+              let isFlipped = cab.reverseFront || false;
+              if (cab.type === 'naroznik') isFlipped = false; 
 
-                    const shouldFlip = cornersBefore === 2;
-                    const isFlipped = cab.reverseFront ? !shouldFlip : shouldFlip;
-
-                    return (
-                      <group key={cab.id} position={item.pos} rotation={[0, item.rot, 0]}>
-                        {cab.type === 'naroznik' ? (
-                           <group rotation={[0, isFlipped ? Math.PI : 0, 0]}>
-                            <SzafkaNarozna cab={cab} dekorFront={f} dekorBody={b} />
-                           </group>
-                        ) : (
-                           <group rotation={[0, isFlipped ? Math.PI : 0, 0]}>
-                             <Szafka 
-                               width={cab.w} height={cab.h} depth={cab.d} dekorFront={f} dekorBody={b} 
-                               type={cab.type} baseType={cab.baseType} doorCount={cab.doorsC} 
-                               doorDirection={cab.doorDirection} drawersCount={cab.drawersC} 
-                               shelvesCount={cab.shelvesC} drawerRatios={cab.ratios} 
-                               hybridSplit={cab.split} hybridOrder={cab.order} 
-                             />
-                           </group>
-                        )}
-                        
-                        {showWorktopGlobal && cab.hasWorktop && cab.type !== 'puste' && (() => {
-                           const nextCorners = cornersBefore + 1;
-                           const nextShouldFlip = nextCorners === 2;
-                           const nextIsFlipped = cab.reverseFront ? !nextShouldFlip : nextShouldFlip;
-                           
-                           return cab.type === 'naroznik' ? (
-                             <group position={[0, cab.h + 0.119, 0]} rotation={[0, isFlipped ? Math.PI : 0, 0]}>
-                               <mesh position={[(cab.cornerSide==='prawy'?1:-1) * (worktopDepth - 0.5 - 0.03) / 2, 0, (0.5 / 2 + 0.03) - (worktopDepth / 2)]}>
-                                 <boxGeometry args={[cab.w + (worktopDepth - 0.5 - 0.03) + 0.001, 0.038, worktopDepth]} />
-                                 <PłytaMaterial dekor={DEKORY[worktopDecor]} w={cab.w + (worktopDepth - 0.5 - 0.03)} h={worktopDepth} rotate offsetX={isFlipped ? item.dist + cab.w + (cab.cornerSide === 'lewy' ? (worktopDepth - 0.5 - 0.03) : 0) - (cabinets[index - 1] ? cabinets[index - 1].w : 0.6) : item.dist} offsetY={isFlipped ? -(item.crossDist + (wtCenterZ * 2)) : item.crossDist} />
-                               </mesh>
-                               <mesh position={[(cab.cornerSide==='prawy'?1:-1) * (cab.w/2 - 0.5 - 0.03 + worktopDepth/2), 0, (cab.w2||0.9)/2 + 0.015]} rotation={[0, (cab.cornerSide === 'prawy' ? -Math.PI / 2 : Math.PI / 2) + (isFlipped !== nextIsFlipped ? Math.PI : 0), 0]}>
-                                 <boxGeometry args={[(cab.w2||0.9) - 0.5 - 0.03 + 0.001, 0.038, worktopDepth]} />
-                                 <PłytaMaterial dekor={DEKORY[worktopDecor]} w={(cab.w2||0.9) - 0.5 - 0.03} h={worktopDepth} rotate offsetX={nextIsFlipped ? -(item.dist + cab.w + 0.03) : (item.dist + cab.w + 0.03)} offsetY={item.crossDist + (cab.cornerSide === 'prawy' ? 0.07 : -0.07) + (nextIsFlipped ? (wtCenterZ * 2) : 0)} />
-                               </mesh>
-                             </group>
-                           ) : (
-                             <mesh position={[0, cab.h + 0.119, isFlipped ? -wtCenterZ : wtCenterZ]}>
-                               <boxGeometry args={[cab.w + 0.001, 0.038, worktopDepth]} />
-                               <PłytaMaterial dekor={DEKORY[worktopDecor]} w={cab.w} h={worktopDepth} rotate offsetX={isFlipped ? -item.dist : item.dist} offsetY={item.crossDist + (isFlipped ? (wtCenterZ * 2) : 0)} />
-                             </mesh>
-                           );
-                        })()}
-                      </group>
-                    );
-                  })}
+              return (
+                <group key={cab.id} position={item.pos} rotation={[0, item.rot, 0]}>
+                  {cab.type === 'naroznik' ? (
+                     <group rotation={[0, 0, 0]}>
+                      <SzafkaNarozna cab={cab} dekorFront={f} dekorBody={b} />
+                     </group>
+                  ) : (
+                     <group rotation={[0, isFlipped ? Math.PI : 0, 0]}>
+                       <Szafka 
+                         width={cab.w} height={cab.h} depth={cab.d} dekorFront={f} dekorBody={b} 
+                         type={cab.type} baseType={cab.baseType} doorCount={cab.doorsC} 
+                         doorDirection={cab.doorDirection} drawersCount={cab.drawersC} 
+                         shelvesCount={cab.shelvesC} drawerRatios={cab.ratios} 
+                         hybridSplit={cab.split} hybridOrder={cab.order} 
+                       />
+                     </group>
+                  )}
+                  
+                  {showWorktopGlobal && cab.hasWorktop && cab.type !== 'puste' && (() => {
+                     const nextCab = cabinets[index + 1];
+                     const nextIsFlipped = (nextCab && nextCab.type !== 'naroznik') ? (nextCab.reverseFront || false) : false;
+                     
+                     return cab.type === 'naroznik' ? (
+                       <group position={[0, cab.h + 0.119, 0]}>
+                         {/* Blat GŁÓWNY narożnika */}
+                         <mesh position={[(cab.cornerSide==='prawy'?1:-1) * (worktopDepth - 0.5 - 0.03) / 2, 0, (0.5 / 2 + 0.03) - (worktopDepth / 2)]}>
+                           <boxGeometry args={[cab.w + (worktopDepth - 0.5 - 0.03) + 0.001, 0.038, worktopDepth]} />
+                           <PłytaMaterial 
+                             dekor={DEKORY[worktopDecor]} 
+                             w={cab.w + (worktopDepth - 0.5 - 0.03)} 
+                             h={worktopDepth} 
+                             rotate 
+                             offsetX={isFlipped ? item.dist + cab.w + (cab.cornerSide === 'lewy' ? (worktopDepth - 0.5 - 0.03) : 0) - (cabinets[index - 1] ? cabinets[index - 1].w : 0.6) : item.dist} 
+                             offsetY={isFlipped ? -(item.crossDist + (wtCenterZ * 2)) : item.crossDist} 
+                           />
+                         </mesh>
+                         {/* Blat BOCZNY narożnika */}
+                         <mesh 
+                           position={[(cab.cornerSide==='prawy'?1:-1) * (cab.w/2 - 0.5 - 0.03 + worktopDepth/2), 0, (cab.w2||0.9)/2 + 0.015]}
+                           rotation={[0, (cab.cornerSide === 'prawy' ? -Math.PI / 2 : Math.PI / 2) + (nextIsFlipped ? Math.PI : 0), 0]}
+                         >
+                           <boxGeometry args={[(cab.w2||0.9) - 0.5 - 0.03 + 0.001, 0.038, worktopDepth]} />
+                           <PłytaMaterial 
+                             dekor={DEKORY[worktopDecor]} 
+                             w={(cab.w2||0.9) - 0.5 - 0.03} 
+                             h={worktopDepth} 
+                             rotate 
+                             offsetX={nextIsFlipped ? -(item.dist + cab.w + 0.03) : (item.dist + cab.w + 0.03)} 
+                             offsetY={item.crossDist + (cab.cornerSide === 'prawy' ? 0.07 : -0.07) + (nextIsFlipped ? (wtCenterZ * 2) : 0)} 
+                           />
+                         </mesh>
+                       </group>
+                     ) : (
+                       <mesh position={[0, cab.h + 0.119, isFlipped ? -wtCenterZ : wtCenterZ]}>
+                         <boxGeometry args={[cab.w + 0.001, 0.038, worktopDepth]} />
+                         <PłytaMaterial 
+                           dekor={DEKORY[worktopDecor]} 
+                           w={cab.w} 
+                           h={worktopDepth} 
+                           rotate 
+                           offsetX={isFlipped ? -item.dist : item.dist} 
+                           offsetY={item.crossDist + (isFlipped ? (wtCenterZ * 2) : 0)} 
+                         />
+                       </mesh>
+                     );
+                  })()}
+                </group>
+              );
+            })}
                 </Suspense>
                 <OrbitControls makeDefault target={sceneCenter} enablePan={true} />
               </Canvas>
