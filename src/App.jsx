@@ -569,6 +569,7 @@ export default function App() {
   const [kitchenStart, setKitchenStart] = useState(null);
   const [previewKitchenStart, setPreviewKitchenStart] = useState(null);
   const [kitchenFlip, setKitchenFlip] = useState(false); // Opcja odbicia lustrzanego
+  const [showStartModal, setShowStartModal] = useState(false); // NOWOŚĆ: Okienko popout
 
   const [cabinets, setCabinets] = useState([{ ...DOMYSLNA_SZAFKA, id: Date.now() }]);
   const [activeIdx, setActiveIdx] = useState(0);
@@ -643,12 +644,21 @@ export default function App() {
       runDist += cab.w;
 
       if (cab.type === 'naroznik') {
-        const isRight = (cab.cornerSide === 'prawy') !== shouldFlip;
+        // Czysta matematyka szafki - bez mieszania w to lustrzanego odbicia.
+        // Skoro przy renderowaniu podmieniamy model, czysta ścieżka matematyczna po przejściu przez lustro dopasuje się perfekcyjnie!
+        const isRight = cab.cornerSide === 'prawy';
         const safeW2 = cab.w2 || 1.0;
+        
         if (isRight) {
-          localCursor.translateX(-0.25); localCursor.translateZ(safeW2 - 0.25); localCursor.rotateY(-Math.PI / 2); crossDist += 0.07;
+          localCursor.translateX(-0.25);
+          localCursor.translateZ(safeW2 - 0.25);
+          localCursor.rotateY(-Math.PI / 2);
+          crossDist += 0.07;
         } else {
-          localCursor.translateX(-cab.w + 0.25); localCursor.translateZ(safeW2 - 0.25); localCursor.rotateY(Math.PI / 2); crossDist -= 0.07;
+          localCursor.translateX(-cab.w + 0.25);
+          localCursor.translateZ(safeW2 - 0.25);
+          localCursor.rotateY(Math.PI / 2);
+          crossDist -= 0.07;
         }
         runDist += safeW2 - 0.5;
       }
@@ -748,6 +758,7 @@ export default function App() {
     setWallNodes([...unique, unique[0]]);
     setIsHoveringStart(false);
     setPreviewNode(null);
+    setShowStartModal(true); // NOWOŚĆ: Odpalamy popout!
   };
 
  return (
@@ -810,6 +821,10 @@ export default function App() {
                   let bestAngle = 0;
                   let bestInDx = 0;
                   let bestInDz = 0;
+                  let bestWallA = null;
+                  let bestWallB = null;
+                  let bestWallIdx = -1;
+                  let bestT = 0;
 
                   for (let i = 0; i < wallNodes.length - 1; i++) {
                     const A = wallNodes[i]; const B = wallNodes[i+1];
@@ -834,9 +849,13 @@ export default function App() {
                       bestInDx = inDx;
                       bestInDz = inDz;
                       bestAngle = Math.atan2(inDx, inDz); 
+                      bestWallA = A;
+                      bestWallB = B;
+                      bestWallIdx = i;
+                      bestT = t;
                     }
                   }
-                  if (minDist < 0.25) setPreviewKitchenStart({ ...bestPoint, angle: bestAngle, inDx: bestInDx, inDz: bestInDz, isClockwise });
+                  if (minDist < 0.25) setPreviewKitchenStart({ ...bestPoint, angle: bestAngle, inDx: bestInDx, inDz: bestInDz, isClockwise, wallA: bestWallA, wallB: bestWallB, wallIndex: bestWallIdx, t: bestT });
                   else setPreviewKitchenStart(null);
                   return;
                 }
@@ -905,41 +924,95 @@ export default function App() {
 
                   return (
                     <g key={`label-${i}`}>
-                      <rect x={dimX - 26} y={dimY - 11} width="52" height="22" fill="white" rx="4" opacity="0.9" stroke="#bdc3c7" strokeWidth="1" />
-                      <text x={dimX} y={dimY + 1} textAnchor="middle" alignmentBaseline="middle" fontSize="12" fontWeight="bold" fill="#2c3e50">{dist} cm</text>
-                      
-                      <rect x={nameX - 32} y={nameY - 11} width="64" height="22" fill="#f8f9fa" rx="4" opacity="0.9" stroke="#bdc3c7" strokeWidth="1" />
-                      <text x={nameX} y={nameY + 1} textAnchor="middle" alignmentBaseline="middle" fontSize="11" fontWeight="bold" fill="#7f8c8d">Ściana {i + 1}</text>
+                      {/* NOWOŚĆ: Interaktywne okienko input osadzone prosto w SVG */}
+                      <foreignObject x={dimX - 38} y={dimY - 15} width="76" height="30" style={{ overflow: 'visible' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'white', border: '1px solid #3498db', borderRadius: '4px', padding: '2px 4px', boxShadow: '0 2px 6px rgba(0,0,0,0.15)' }}
+                             onMouseDown={(e) => e.stopPropagation()} 
+                             onClick={(e) => e.stopPropagation()}
+                        >
+                          <input 
+                            type="number" 
+                            value={dist}
+                            onChange={(e) => {
+                              const newLen = parseInt(e.target.value);
+                              if (isNaN(newLen) || newLen <= 0) return;
+                              
+                              const newNodes = wallNodes.map(n => ({ ...n }));
+                              const A = newNodes[i];
+                              const B = newNodes[i + 1];
+                              const currentLength = Math.sqrt(dx * dx + dz * dz) || 1;
+                              
+                              B.x = A.x + (dx / currentLength) * (newLen / 100);
+                              B.z = A.z + (dz / currentLength) * (newLen / 100);
+
+                              const isRoomClosed = wallNodes.length > 2 && wallNodes[0].x === wallNodes[wallNodes.length - 1].x && wallNodes[0].z === wallNodes[wallNodes.length - 1].z;
+                              if (isRoomClosed && i + 1 === newNodes.length - 1) { newNodes[0] = { ...B }; }
+                              setWallNodes(newNodes);
+                              
+                              if (kitchenStart && kitchenStart.wallIndex !== undefined) {
+                                 const kA = newNodes[kitchenStart.wallIndex];
+                                 const kB = newNodes[kitchenStart.wallIndex + 1];
+                                 setKitchenStart({
+                                   ...kitchenStart, x: kA.x + kitchenStart.t * (kB.x - kA.x), z: kA.z + kitchenStart.t * (kB.z - kA.z), wallA: kA, wallB: kB
+                                 });
+                              }
+                            }}
+                            style={{ width: '45px', border: 'none', outline: 'none', textAlign: 'right', fontWeight: 'bold', fontSize: '13px', color: '#2c3e50', padding: 0, margin: 0, backgroundColor: 'transparent' }}
+                          />
+                          <span style={{ fontSize: '11px', color: '#7f8c8d', marginLeft: '3px', fontWeight: 'bold', pointerEvents: 'none' }}>cm</span>
+                        </div>
+                      </foreignObject>
                     </g>
                   );
                 })}
 
                 {/* Linia i poziomy wymiar PODGLĄDU na żywo (Mnożniki x120 i x60) */}
                 {!(wallNodes.length > 2 && wallNodes[0].x === wallNodes[wallNodes.length - 1].x && wallNodes[0].z === wallNodes[wallNodes.length - 1].z) && wallNodes.length > 0 && previewNode && (() => {
-                  const p1 = wallNodes[wallNodes.length - 1]; const p2 = previewNode;
-                  const cx = (p1.x + p2.x) * 60 + 300; const cy = (p1.z + p2.z) * 60 + 300;
-                  const dx = p2.x - p1.x; const dz = p2.z - p1.z;
-                  const len = Math.sqrt(dx * dx + dz * dz);
-                  if (len === 0) return null;
+                  const p1 = wallNodes[wallNodes.length - 1]; 
+                  const p2 = previewNode;
                   
-                  const dist = Math.round(len * 100);
-                  const nx = -dz / len; const nz = dx / len;
-                  
-                  // Dynamiczny offset zastosowany również do podglądu na żywo
-                  const isHorizontal = Math.abs(dx) > Math.abs(dz);
-                  const offset = isHorizontal ? 18 : 38;
-                  
-                  const dimX = cx + nx * offset; const dimY = cy + nz * offset;
+                  // Funkcja pomocnicza do rysowania pojedynczego odcinka podglądu
+                  const renderSegment = (start, end, keyStr) => {
+                    const cx = (start.x + end.x) * 60 + 300; 
+                    const cy = (start.z + end.z) * 60 + 300;
+                    const dx = end.x - start.x; 
+                    const dz = end.z - start.z;
+                    const len = Math.sqrt(dx * dx + dz * dz);
+                    if (len === 0) return null;
+                    
+                    const dist = Math.round(len * 100);
+                    const nx = -dz / len; 
+                    const nz = dx / len;
+                    
+                    const isHorizontal = Math.abs(dx) > Math.abs(dz);
+                    const offset = isHorizontal ? 18 : 38;
+                    const dimX = cx + nx * offset; 
+                    const dimY = cy + nz * offset;
 
-                  return (
-                    <g>
-                      <line x1={p1.x * 120 + 300} y1={p1.z * 120 + 300} x2={p2.x * 120 + 300} y2={p2.z * 120 + 300} stroke={isHoveringStart ? "#e74c3c" : "#3498db"} strokeWidth="4" strokeDasharray="8,8" opacity={isHoveringStart ? "0.9" : "0.6"} />
-                      <g>
-                        <rect x={dimX - 26} y={dimY - 11} width="52" height="22" fill="white" rx="4" opacity="0.9" stroke={isHoveringStart ? "#e74c3c" : "#3498db"} strokeWidth="1" />
-                        <text x={dimX} y={dimY + 1} textAnchor="middle" alignmentBaseline="middle" fontSize="12" fontWeight="bold" fill={isHoveringStart ? "#e74c3c" : "#3498db"}>{dist} cm</text>
+                    return (
+                      <g key={keyStr}>
+                        <line x1={start.x * 120 + 300} y1={start.z * 120 + 300} x2={end.x * 120 + 300} y2={end.z * 120 + 300} stroke={isHoveringStart ? "#e74c3c" : "#3498db"} strokeWidth="4" strokeDasharray="8,8" opacity={isHoveringStart ? "0.9" : "0.6"} />
+                        <g>
+                          <rect x={dimX - 26} y={dimY - 11} width="52" height="22" fill="white" rx="4" opacity="0.9" stroke={isHoveringStart ? "#e74c3c" : "#3498db"} strokeWidth="1" />
+                          <text x={dimX} y={dimY + 1} textAnchor="middle" alignmentBaseline="middle" fontSize="12" fontWeight="bold" fill={isHoveringStart ? "#e74c3c" : "#3498db"}>{dist} cm</text>
+                        </g>
                       </g>
-                    </g>
-                  );
+                    );
+                  };
+
+                  // NOWOŚĆ: Jeśli najeżdżamy na start, a ściana jest ukośna - łamiemy podgląd w kąt prosty!
+                  if (isHoveringStart && p1.x !== p2.x && p1.z !== p2.z) {
+                    const pMid = { x: p2.x, z: p1.z }; // Punkt załamania (identyczny z ostatecznym)
+                    return (
+                      <g>
+                        {renderSegment(p1, pMid, 'seg1')}
+                        {renderSegment(pMid, p2, 'seg2')}
+                      </g>
+                    );
+                  }
+
+                  // Standardowa prosta linia, jeśli rysujemy normalnie
+                  return renderSegment(p1, p2, 'seg1');
                 })()}
 
                 {/* Narożniki ścian (Mnożnik x120) */}
@@ -956,9 +1029,55 @@ export default function App() {
                 {/* Podgląd kursora (Mnożnik x120) */}
                 {previewNode && !isHoveringStart && !(wallNodes.length > 2 && wallNodes[0].x === wallNodes[wallNodes.length - 1].x && wallNodes[0].z === wallNodes[wallNodes.length - 1].z) && <circle cx={previewNode.x * 120 + 300} cy={previewNode.z * 120 + 300} r="5" fill="#3498db" opacity="0.6" />}
               {/* --- NOWOŚĆ: WIZUALIZACJA STARTU KUCHNI W SVG --- */}
-                {wallNodes.length > 2 && wallNodes[0].x === wallNodes[wallNodes.length - 1].x && wallNodes[0].z === wallNodes[wallNodes.length - 1].z && previewKitchenStart && !kitchenStart && (
-                  <circle cx={previewKitchenStart.x * 120 + 300} cy={previewKitchenStart.z * 120 + 300} r="8" fill="#40c057" opacity="0.6" />
-                )}
+                {wallNodes.length > 2 && wallNodes[0].x === wallNodes[wallNodes.length - 1].x && wallNodes[0].z === wallNodes[wallNodes.length - 1].z && (kitchenStart || previewKitchenStart) && (() => {
+                  const p = kitchenStart || previewKitchenStart;
+                  
+                  // Zabezpieczenie przed starym stanem w pamięci po odświeżeniu kodu
+                  if (!p.wallA || !p.wallB) return null; 
+
+                  const cx = p.x * 120 + 300;
+                  const cy = p.z * 120 + 300;
+                  
+                  // Odsunięcie linii wymiarowej do wewnątrz pokoju (wizualnie o 40px)
+                  const offsetVis = 40; 
+                  const midX = cx + p.inDx * offsetVis;
+                  const midY = cy + p.inDz * offsetVis;
+
+                  // Rzutowanie narożników pokoju do wewnątrz, by stworzyć punkty dla linii
+                  const axVis = p.wallA.x * 120 + 300 + p.inDx * offsetVis;
+                  const ayVis = p.wallA.z * 120 + 300 + p.inDz * offsetVis;
+                  const bxVis = p.wallB.x * 120 + 300 + p.inDx * offsetVis;
+                  const byVis = p.wallB.z * 120 + 300 + p.inDz * offsetVis;
+
+                  // Odległości fizyczne
+                  const distA = Math.round(Math.sqrt((p.x - p.wallA.x)**2 + (p.z - p.wallA.z)**2) * 100);
+                  const distB = Math.round(Math.sqrt((p.x - p.wallB.x)**2 + (p.z - p.wallB.z)**2) * 100);
+
+                  return (
+                    <g style={{ pointerEvents: 'none' }}>
+                      {/* Zielona przerywana odległość od ściany */}
+                      <line x1={cx} y1={cy} x2={midX} y2={midY} stroke="#40c057" strokeWidth="2" strokeDasharray="4,4" />
+                      
+                      {/* Ciemne przerywane wymiary */}
+                      <line x1={midX} y1={midY} x2={axVis} y2={ayVis} stroke="#2c3e50" strokeWidth="1.5" strokeDasharray="4,4" />
+                      <line x1={midX} y1={midY} x2={bxVis} y2={byVis} stroke="#2c3e50" strokeWidth="1.5" strokeDasharray="4,4" />
+                      <circle cx={midX} cy={midY} r="3" fill="#2c3e50" />
+                      
+                      {/* Etykiety z odległością na żywo */}
+                      <g transform={`translate(${(midX + axVis)/2}, ${(midY + ayVis)/2})`}>
+                        <rect x="-22" y="-12" width="44" height="24" fill="white" opacity="0.9" rx="4" />
+                        <text x="0" y="1" textAnchor="middle" alignmentBaseline="middle" fontSize="12" fontWeight="bold" fill="#2c3e50">{distA} cm</text>
+                      </g>
+                      <g transform={`translate(${(midX + bxVis)/2}, ${(midY + byVis)/2})`}>
+                        <rect x="-22" y="-12" width="44" height="24" fill="white" opacity="0.9" rx="4" />
+                        <text x="0" y="1" textAnchor="middle" alignmentBaseline="middle" fontSize="12" fontWeight="bold" fill="#2c3e50">{distB} cm</text>
+                      </g>
+
+                      {/* Sama zielona kropka startu - ukrywamy ją po kliknięciu, bo pojawia się nowa z napisem */}
+                      {!kitchenStart && <circle cx={cx} cy={cy} r="8" fill="#40c057" opacity="0.8" />}
+                    </g>
+                  );
+                })()}
                 
                 {kitchenStart && (() => {
                   const inX = kitchenStart.inDx; 
@@ -972,8 +1091,11 @@ export default function App() {
                   
                   return (
                     <g transform={`translate(${kitchenStart.x * 120 + 300}, ${kitchenStart.z * 120 + 300})`}>
-                      <line x1="0" y1="0" x2={dirX * 60} y2={dirZ * 60} stroke="#2e7d32" strokeWidth="5" strokeLinecap="round" />
-                      <circle cx={dirX * 60} cy={dirZ * 60} r="5" fill="#2e7d32" />
+                      {/* Elegancka strzałka wskazująca kierunek budowania szafek */}
+                      <line x1="0" y1="0" x2={dirX * 50} y2={dirZ * 50} stroke="#2e7d32" strokeWidth="5" strokeLinecap="round" />
+                      <g transform={`translate(${dirX * 56}, ${dirZ * 56}) rotate(${Math.atan2(dirZ, dirX) * (180 / Math.PI)})`}>
+                        <polygon points="-8,-8 10,0 -8,8" fill="#2e7d32" stroke="#2e7d32" strokeWidth="2" strokeLinejoin="round" />
+                      </g>
                       
                       <line x1="0" y1="0" x2={inX * 30} y2={inZ * 30} stroke="#f39c12" strokeWidth="3" strokeDasharray="4,4" />
                       <circle cx="0" cy="0" r="10" fill="#2e7d32" />
@@ -993,68 +1115,21 @@ export default function App() {
             {wallNodes.length > 2 && wallNodes[0].x === wallNodes[wallNodes.length - 1].x && wallNodes[0].z === wallNodes[wallNodes.length - 1].z && (
               <div style={{ marginTop: '20px', padding: '15px', backgroundColor: '#e3f2fd', borderRadius: '8px', border: '1px solid #90caf9', textAlign: 'center', width: '100%', maxWidth: '600px', boxSizing: 'border-box' }}>
                 {!kitchenStart ? (
-                  <h3 style={{ color: '#0277bd', margin: 0, fontSize: '15px' }}>👆 Świetnie! Teraz najedź na narysowaną ścianę i kliknij, aby postawić punkt STARTU kuchni.</h3>
+                  <h3 style={{ color: '#0277bd', margin: 0, fontSize: '15px' }}>👆 Świetnie! Teraz najedź na narysowaną ścianę i kliknij, aby wskazać miejsce, od którego zaczną się dodawać szafki.</h3>
                 ) : (
-                  <>
-                    <h3 style={{ color: '#2e7d32', margin: '0 0 10px 0', fontSize: '15px' }}>✅ Start kuchni zapisany.</h3>
-                    <button onClick={() => setKitchenFlip(!kitchenFlip)} style={{ padding: '10px 20px', backgroundColor: '#f39c12', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', width: '100%' }}>
-                      🔄 Pomarańczowa strzałka (lub szafki w 3D) wylądowały na zewnątrz pokoju? Kliknij tu!
-                    </button>
-                  </>
+                  <button onClick={() => setKitchenFlip(!kitchenFlip)} style={{ padding: '10px 20px', backgroundColor: '#f39c12', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', width: '100%' }}>
+                    🔄 Zmień kierunek dodawania szafek lewo/prawo
+                  </button>
                 )}
               </div>
             )}
 
             
-            {/* --- NOWOŚĆ: INTERFEJS DO RĘCZNEJ EDYCJI DŁUGOŚCI ŚCIAN --- */}
-            {wallNodes.length > 1 && (
-              <div style={{ marginTop: '20px', width: '100%', maxWidth: '600px', backgroundColor: 'white', padding: '15px', borderRadius: '8px', border: '1px solid #bdc3c7', boxShadow: '0 2px 10px rgba(0,0,0,0.05)' }}>
-                <h3 style={{ fontSize: '15px', color: '#2c3e50', margin: '0 0 10px 0' }}>Wymiary ścian (zmień by dopasować do pokoju):</h3>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
-                  {wallNodes.slice(0, -1).map((node, i) => {
-                    const dx = wallNodes[i+1].x - node.x;
-                    const dz = wallNodes[i+1].z - node.z;
-                    const lenCm = Math.round(Math.sqrt(dx*dx + dz*dz) * 100);
-                    return (
-                      <div key={i} style={{ display: 'flex', alignItems: 'center', background: '#f8f9fa', padding: '6px 10px', borderRadius: '6px', border: '1px solid #ccc' }}>
-                        <span style={{ fontSize: '12px', marginRight: '8px', fontWeight: 'bold', color: '#2c3e50' }}>Ściana {i+1}:</span>
-                        <input 
-                          type="number" 
-                          value={lenCm}
-                          onChange={(e) => {
-                            const newLen = parseInt(e.target.value);
-                            if (isNaN(newLen) || newLen <= 0) return;
-                            
-                            // Matematyka zmiany długości odcinka i przesuwania punktu B
-                            const newNodes = wallNodes.map(n => ({ ...n }));
-                            const A = newNodes[i];
-                            const B = newNodes[i + 1];
-                            const currentLength = Math.sqrt(dx * dx + dz * dz) || 1;
-                            
-                            B.x = A.x + (dx / currentLength) * (newLen / 100);
-                            B.z = A.z + (dz / currentLength) * (newLen / 100);
-
-                            // Jeśli pokój jest zamknięty i edytujemy OSTATNIĄ ścianę - musimy zsynchronizować pierwszy punkt!
-                            const isRoomClosed = wallNodes.length > 2 && wallNodes[0].x === wallNodes[wallNodes.length - 1].x && wallNodes[0].z === wallNodes[wallNodes.length - 1].z;
-                            if (isRoomClosed && i + 1 === newNodes.length - 1) {
-                              newNodes[0] = { ...B };
-                            }
-                            setWallNodes(newNodes);
-                          }}
-                          style={{ width: '60px', border: '1px solid #ddd', borderRadius: '4px', padding: '4px', textAlign: 'center', fontWeight: 'bold', fontSize: '13px' }}
-                        />
-                        <span style={{ fontSize: '12px', marginLeft: '4px', color: '#7f8c8d' }}>cm</span>
-                      </div>
-                    )
-                  })}
-                </div>
-                <p style={{ fontSize: '11px', color: '#95a5a6', margin: '10px 0 0 0' }}>* Zmiana długości przesuwa węzeł, co może wpłynąć na kąty (np. skosy w pokojach).</p>
-              </div>
-            )}
+            
 
             {/* Przyciski sterujące */}
             <div style={{ display: 'flex', gap: '15px', marginTop: '20px' }}>
-              <button onClick={() => setWallNodes([])} style={{ padding: '10px 20px', backgroundColor: '#e74c3c', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>
+              <button onClick={() => { setWallNodes([]); setKitchenStart(null); setPreviewKitchenStart(null); }} style={{ padding: '10px 20px', backgroundColor: '#e74c3c', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>
                 Wyczyść wszystko
               </button>
               
@@ -1071,6 +1146,23 @@ export default function App() {
                 {wallNodes.length > 0 ? "Gotowe, wstaw szafki ➡️" : "Pomiń rysowanie ścian ➡️"}
               </button>
             </div>
+
+            {/* NOWOŚĆ: KLOCEK POPOUT (MODAL) NA ŚRODKU EKRANU */}
+            {showStartModal && (
+              <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+                <div style={{ backgroundColor: 'white', padding: '40px', borderRadius: '16px', textAlign: 'center', boxShadow: '0 10px 30px rgba(0,0,0,0.3)', maxWidth: '450px' }}>
+                  <div style={{ fontSize: '40px', marginBottom: '10px' }}>🎉</div>
+                  <h2 style={{ color: '#2c3e50', margin: '0 0 15px 0' }}>Pokój utworzony!</h2>
+                  <p style={{ fontSize: '16px', color: '#34495e', lineHeight: '1.6', marginBottom: '25px' }}>
+                    Świetnie! Teraz najedź myszką na narysowaną ścianę i <b>kliknij</b>, aby wskazać miejsce, od którego <b>zaczną się dodawać szafki</b>.
+                  </p>
+                  <button onClick={() => setShowStartModal(false)} style={{ padding: '12px 35px', backgroundColor: '#40c057', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '16px', fontWeight: 'bold', boxShadow: '0 4px 15px rgba(64, 192, 87, 0.3)' }}>
+                    Zrozumiałem
+                  </button>
+                </div>
+              </div>
+            )}
+
           </div>
         )}
 
@@ -1298,21 +1390,35 @@ export default function App() {
                   {/* TUTAJ WSTAWIAMY NASZE ŚCIANY */}
                   <Walls3D nodes={wallNodes} />
                   {layout.map((item, index) => {
-              const cab = cabinets[index];
+              let cab = cabinets[index];
+              
+              // Rozpoznajemy, czy układ buduje się w trybie odbicia lustrzanego
+              const isMirrored = kitchenStart ? (!kitchenStart.isClockwise !== kitchenFlip) : false;
+              
+              // ZAMIAST obracania narożników o 180 stopni, system sam wymienia ich fizyczny model na lewy/prawy
+              if (cab.type === 'naroznik' && isMirrored) {
+                cab = { ...cab, cornerSide: cab.cornerSide === 'prawy' ? 'lewy' : 'prawy' };
+              }
+
               const f = DEKORY[cab.useCustomColors ? cab.fDecor : globalF];
               const b = DEKORY[cab.useCustomColors ? cab.bDecor : globalB];
               
               const wtCenterZ = (cab.d / 2 + 0.03) - (worktopDepth / 2);
               
               // --- LOGIKA OBROTU ---
-              // Silnik 3D naturalnie zgina się ze ścianami, więc szafki ZAWSZE patrzą do środka pokoju!
               let isFlipped = cab.reverseFront || false;
-              if (cab.type === 'naroznik') isFlipped = false; 
+              const cornersBefore = cabinets.slice(0, index).filter(c => c.type === 'naroznik').length;
+              
+              if (cab.type === 'naroznik') {
+                isFlipped = (cornersBefore === 2); // Pozwalamy TRZECIEMU narożnikowi obrócić się do środka
+              } else if (cornersBefore === 2) {
+                isFlipped = !isFlipped; 
+              }
 
               return (
                 <group key={cab.id} position={item.pos} rotation={[0, item.rot, 0]}>
                   {cab.type === 'naroznik' ? (
-                     <group rotation={[0, 0, 0]}>
+                     <group rotation={[0, isFlipped ? Math.PI : 0, 0]}>
                       <SzafkaNarozna cab={cab} dekorFront={f} dekorBody={b} />
                      </group>
                   ) : (
@@ -1329,10 +1435,13 @@ export default function App() {
                   
                   {showWorktopGlobal && cab.hasWorktop && cab.type !== 'puste' && (() => {
                      const nextCab = cabinets[index + 1];
-                     const nextIsFlipped = (nextCab && nextCab.type !== 'naroznik') ? (nextCab.reverseFront || false) : false;
-                     
+                     let nextIsFlipped = (nextCab && nextCab.type !== 'naroznik') ? (nextCab.reverseFront || false) : false;
+                     const nextCornersBefore = cabinets.slice(0, index + 1).filter(c => c.type === 'naroznik').length;
+                     if (nextCornersBefore === 2 && nextCab && nextCab.type !== 'naroznik') {
+                       nextIsFlipped = !nextIsFlipped;
+                     }
                      return cab.type === 'naroznik' ? (
-                       <group position={[0, cab.h + 0.119, 0]}>
+                       <group position={[0, cab.h + 0.119, 0]} rotation={[0, isFlipped ? Math.PI : 0, 0]}>
                          {/* Blat GŁÓWNY narożnika */}
                          <mesh position={[(cab.cornerSide==='prawy'?1:-1) * (worktopDepth - 0.5 - 0.03) / 2, 0, (0.5 / 2 + 0.03) - (worktopDepth / 2)]}>
                            <boxGeometry args={[cab.w + (worktopDepth - 0.5 - 0.03) + 0.001, 0.038, worktopDepth]} />
