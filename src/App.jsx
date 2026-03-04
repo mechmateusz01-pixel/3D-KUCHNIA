@@ -397,27 +397,87 @@ function Szafka({ width, height, depth, dekorFront, dekorBody, type, baseType, d
     </group>
   );
 }
-// --- NOWY KOMPONENT: ŚCIANY 3D ---
-function Walls3D({ nodes }) {
+// --- NOWY KOMPONENT: ŚCIANY 3D Z INTELIGENTNYM ZNIKANIEM (TYLKO JEDNA ŚCIANA) ---
+function Walls3D({ nodes, sceneCenter }) {
+  const materialsRef = useRef([]);
+
+  useFrame(({ camera }) => {
+    if (nodes.length < 2) return;
+
+    let hideIndex = -1;
+    let minDistance = Infinity;
+
+    // NOWOŚĆ: Sprawdzamy, czy kamera jest fizycznie W ŚRODKU pokoju (algorytm Ray-casting)
+    let isInside = false;
+    const cx = camera.position.x;
+    const cz = camera.position.z;
+    for (let i = 0, j = nodes.length - 2; i < nodes.length - 1; j = i++) {
+      const xi = nodes[i].x, zi = nodes[i].z;
+      const xj = nodes[j].x, zj = nodes[j].z;
+      const intersect = ((zi > cz) !== (zj > cz)) && (cx < (xj - xi) * (cz - zi) / (zj - zi) + xi);
+      if (intersect) isInside = !isInside;
+    }
+
+    // 1. Krok: Sprawdzamy ściany TYLKO jeśli kamera jest na zewnątrz pokoju!
+    if (!isInside) {
+      for (let i = 0; i < nodes.length - 1; i++) {
+        const p1 = nodes[i];
+        const p2 = nodes[i + 1];
+        const posX = (p1.x + p2.x) / 2;
+        const posZ = (p1.z + p2.z) / 2;
+
+        const wcX = sceneCenter[0] - posX;
+        const wcZ = sceneCenter[2] - posZ;
+        const wCamX = camera.position.x - posX;
+        const wCamZ = camera.position.z - posZ;
+
+        const dotProduct = (wcX * wCamX) + (wcZ * wCamZ);
+
+        if (dotProduct < 0) {
+          const dist = Math.sqrt(wCamX * wCamX + wCamZ * wCamZ);
+          if (dist < minDistance) {
+            minDistance = dist;
+            hideIndex = i;
+          }
+        }
+      }
+    }
+
+    // 2. Krok: Aktualizujemy przezroczystość - zasłaniająca ściana robi się "szklista" (0.08)
+    for (let i = 0; i < nodes.length - 1; i++) {
+      const mat = materialsRef.current[i];
+      if (mat) {
+        // Jeśli to ściana do ukrycia, zostawiamy 8% widoczności (efekt szyby), reszta normalnie na 30%
+        const targetOpacity = (i === hideIndex) ? 0.08 : 0.3;
+        mat.opacity = THREE.MathUtils.lerp(mat.opacity, targetOpacity, 0.1);
+      }
+    }
+  });
+
   if (nodes.length < 2) return null;
+
   const walls = [];
-  
   for (let i = 0; i < nodes.length - 1; i++) {
     const p1 = nodes[i];
     const p2 = nodes[i + 1];
-    
-    // Obliczamy długość, pozycję i kąt obrotu każdej ściany
     const dx = p2.x - p1.x;
     const dz = p2.z - p1.z;
     const length = Math.sqrt(dx * dx + dz * dz);
-    const angle = -Math.atan2(dz, dx); 
+    const angle = -Math.atan2(dz, dx);
     const posX = (p1.x + p2.x) / 2;
     const posZ = (p1.z + p2.z) / 2;
 
     walls.push(
       <mesh key={i} position={[posX, 1.25, posZ]} rotation={[0, angle, 0]}>
-        <boxGeometry args={[length + 0.1, 2.5, 0.1]} /> {/* 0.1 to grubość ściany, 2.5 to wysokość */}
-        <meshStandardMaterial color="#ffffff" transparent opacity={0.3} depthWrite={false} side={THREE.DoubleSide} />
+        <boxGeometry args={[length, 2.5, 0.001]} />
+        <meshStandardMaterial
+          ref={(el) => (materialsRef.current[i] = el)}
+          color="#ffffff"
+          transparent
+          opacity={0.3}
+          depthWrite={false}
+          side={THREE.DoubleSide}
+        />
       </mesh>
     );
   }
@@ -560,6 +620,59 @@ const DOMYSLNA_SZAFKA = {
   w2: 1.0, d2: 0.5, cornerSide: 'prawy' 
 };
 
+// --- NOWY KOMPONENT: EFEKT PODŚWIETLENIA SZAFKI (ZANIKAJĄCY FLASH) ---
+function CabinetHighlight({ cab, isFlipped, showWorktop, worktopDepth, nextIsFlipped }) {
+  const mat = useMemo(() => new THREE.MeshBasicMaterial({ color: '#40c057', transparent: true, opacity: 0.8, depthWrite: false }), []);
+  
+  useFrame(() => {
+    if (mat.opacity > 0) mat.opacity = Math.max(0, mat.opacity - 0.015);
+  });
+
+  const h = cab.h + 0.1;
+  const isCorner = cab.type === 'naroznik';
+  const wtCenterZ = (cab.d / 2 + 0.03) - ((worktopDepth || 0.6) / 2);
+
+  return (
+    <group>
+       {/* GŁÓWNA BRYŁA SZAFKI - z uwzględnieniem obrotu! */}
+       <group rotation={[0, isFlipped ? Math.PI : 0, 0]}>
+         <group position={[0, h/2, 0]}>
+           <mesh material={mat}>
+             <boxGeometry args={[cab.w + 0.02, h + 0.02, cab.d + 0.02]} />
+           </mesh>
+           {isCorner && (
+             <mesh material={mat} position={[(cab.cornerSide === 'prawy' ? 1 : -1) * (cab.w/2 - 0.5 + (cab.d2 || 0.5)/2), 0, (cab.w2 || 0.9)/2 - cab.d/2]}>
+               <boxGeometry args={[(cab.d2 || 0.5) + 0.02, h + 0.02, (cab.w2 || 0.9) - 0.5 + 0.02]} />
+             </mesh>
+           )}
+         </group>
+       </group>
+
+       {/* PODŚWIETLENIE BLATU */}
+       {showWorktop && (
+         isCorner ? (
+           <group position={[0, cab.h + 0.119, 0]} rotation={[0, isFlipped ? Math.PI : 0, 0]}>
+             <mesh position={[(cab.cornerSide==='prawy'?1:-1) * (worktopDepth - 0.5 - 0.03) / 2, 0, (0.5 / 2 + 0.03) - (worktopDepth / 2)]} material={mat}>
+               <boxGeometry args={[cab.w + (worktopDepth - 0.5 - 0.03) + 0.02, 0.038 + 0.02, worktopDepth + 0.02]} />
+             </mesh>
+             <mesh
+               position={[(cab.cornerSide==='prawy'?1:-1) * (cab.w/2 - 0.5 - 0.03 + worktopDepth/2), 0, (cab.w2||0.9)/2 + 0.015]}
+               rotation={[0, (cab.cornerSide === 'prawy' ? -Math.PI / 2 : Math.PI / 2) + (nextIsFlipped ? Math.PI : 0), 0]}
+               material={mat}
+             >
+               <boxGeometry args={[(cab.w2||0.9) - 0.5 - 0.03 + 0.02, 0.038 + 0.02, worktopDepth + 0.02]} />
+             </mesh>
+           </group>
+         ) : (
+           <mesh position={[0, cab.h + 0.119, isFlipped ? -wtCenterZ : wtCenterZ]} material={mat}>
+             <boxGeometry args={[cab.w + 0.02, 0.038 + 0.02, worktopDepth + 0.02]} />
+           </mesh>
+         )
+       )}
+    </group>
+  );
+}
+
 // --- 6. APLIKACJA GŁÓWNA ---
 export default function App() {
   const [currentStep, setCurrentStep] = useState(1); // Zaczynamy od Kroku 1
@@ -573,6 +686,7 @@ export default function App() {
 
   const [cabinets, setCabinets] = useState([{ ...DOMYSLNA_SZAFKA, id: Date.now() }]);
   const [activeIdx, setActiveIdx] = useState(0);
+  const [highlightKey, setHighlightKey] = useState(Date.now());
   const [showWorktopGlobal, setShowWorktopGlobal] = useState(false);
   const [worktopDecor, setWorktopDecor] = useState(domyslnyDekorKlucz);
   const [worktopDepth, setWorktopDepth] = useState(0.60); 
@@ -591,7 +705,7 @@ export default function App() {
 
   const addCabinet = () => {
     const n = [...cabinets, { ...DOMYSLNA_SZAFKA, id: Date.now(), d: activeCab.d, fDecor: globalF, bDecor: globalB }];
-    setCabinets(n); setActiveIdx(n.length - 1);
+    setCabinets(n); setActiveIdx(n.length - 1); setHighlightKey(Date.now());
   };
 
   const moveActiveCab = (direction) => {
@@ -601,6 +715,7 @@ export default function App() {
     [newCabs[activeIdx], newCabs[newIdx]] = [newCabs[newIdx], newCabs[activeIdx]];
     setCabinets(newCabs);
     setActiveIdx(newIdx);
+    setHighlightKey(Date.now());
   };
 
   const finalPrice = cabinets.reduce((sum, cab) => sum + (cab.type === 'puste' ? 0 : Math.round((cab.w * cab.h * cab.d * 1150) + (cab.type !== 'drzwi' ? cab.drawersC * 180 : 95))), 0);
@@ -612,18 +727,28 @@ export default function App() {
       const cur = new THREE.Object3D();
       let rD = 0; let cD = 0;
       cabinets.forEach((cab) => {
+        const isCorner = cab.type === 'naroznik';
+        const effectiveD = isCorner ? 0.5 : cab.d;
+        const zOffset = worktopDepth - 0.03 - (effectiveD / 2);
+
         cur.translateX(cab.w / 2);
+        cur.translateZ(zOffset);
         cur.updateMatrixWorld();
         res.push({ id: cab.id, pos: [cur.position.x, 0, cur.position.z], rot: cur.rotation.y, dist: rD, crossDist: cD });
-        cur.translateX(cab.w / 2); rD += cab.w;
-        if (cab.type === 'naroznik') {
+        cur.translateZ(-zOffset);
+
+        if (isCorner) {
+          const isRight = cab.cornerSide === 'prawy';
           const safeW2 = cab.w2 || 1.0;
-          if (cab.cornerSide === 'prawy') {
-            cur.translateX(-0.25); cur.translateZ(safeW2 - 0.25); cur.rotateY(-Math.PI / 2); cD += 0.07;
-          } else {
-            cur.translateX(-cab.w + 0.25); cur.translateZ(safeW2 - 0.25); cur.rotateY(Math.PI / 2); cD -= 0.07;
-          }
-          rD += safeW2 - 0.5;
+          cur.translateX(-cab.w / 2);
+          cur.translateX(cab.w - 0.53 + worktopDepth);
+          if (isRight) { cur.rotateY(-Math.PI / 2); cD += 0.07; }
+          else { cur.rotateY(Math.PI / 2); cD -= 0.07; }
+          cur.translateX(safeW2 - 0.53 + worktopDepth);
+          rD += cab.w + safeW2 - 0.5;
+        } else {
+          cur.translateX(cab.w / 2);
+          rD += cab.w;
         }
       });
       return res;
@@ -633,41 +758,58 @@ export default function App() {
     const localCursor = new THREE.Object3D();
     let runDist = 0; let crossDist = 0;
 
-    // Magiczna matematyka - decyduje czy musimy "odbić" układ
     const shouldFlip = (!kitchenStart.isClockwise) !== kitchenFlip;
 
     cabinets.forEach((cab) => {
-      localCursor.translateX(cab.w / 2);
-      localCursor.updateMatrixWorld();
-      localResult.push({ id: cab.id, pos: [localCursor.position.x, 0, localCursor.position.z], rot: localCursor.rotation.y, dist: runDist, crossDist: crossDist });
-      localCursor.translateX(cab.w / 2);
-      runDist += cab.w;
+      const isCorner = cab.type === 'naroznik';
+      const effectiveD = isCorner ? 0.5 : cab.d;
+      
+      // Magiczna matematyka - dopasowujemy środek szafki do ściany, by blat zawsze do niej dochodził!
+      const zOffset = worktopDepth - 0.03 - (effectiveD / 2);
 
-      if (cab.type === 'naroznik') {
-        // Czysta matematyka szafki - bez mieszania w to lustrzanego odbicia.
-        // Skoro przy renderowaniu podmieniamy model, czysta ścieżka matematyczna po przejściu przez lustro dopasuje się perfekcyjnie!
+      localCursor.translateX(cab.w / 2);
+      localCursor.translateZ(zOffset);
+      localCursor.updateMatrixWorld();
+      
+      localResult.push({ 
+        id: cab.id, 
+        pos: [localCursor.position.x, 0, localCursor.position.z], 
+        rot: localCursor.rotation.y, 
+        dist: runDist, 
+        crossDist: crossDist 
+      });
+      
+      localCursor.translateZ(-zOffset);
+
+      if (isCorner) {
         const isRight = cab.cornerSide === 'prawy';
         const safeW2 = cab.w2 || 1.0;
         
+        // Wracamy do brzegu narożnika i przeskakujemy do FIZYCZNEGO rogu ściany
+        localCursor.translateX(-cab.w / 2);
+        localCursor.translateX(cab.w - 0.53 + worktopDepth);
+        
         if (isRight) {
-          localCursor.translateX(-0.25);
-          localCursor.translateZ(safeW2 - 0.25);
           localCursor.rotateY(-Math.PI / 2);
           crossDist += 0.07;
         } else {
-          localCursor.translateX(-cab.w + 0.25);
-          localCursor.translateZ(safeW2 - 0.25);
           localCursor.rotateY(Math.PI / 2);
           crossDist -= 0.07;
         }
-        runDist += safeW2 - 0.5;
+        
+        // Odjeżdżamy od nowego rogu, robiąc miejsce na całe ramię narożnika i nową lukę
+        localCursor.translateX(safeW2 - 0.53 + worktopDepth);
+        runDist += cab.w + safeW2 - 0.5;
+      } else {
+        localCursor.translateX(cab.w / 2);
+        runDist += cab.w;
       }
     });
 
     const worldCursor = new THREE.Object3D();
     worldCursor.position.set(kitchenStart.x, 0, kitchenStart.z);
-    worldCursor.rotation.y = Math.atan2(kitchenStart.inDx, kitchenStart.inDz); // BEZWZGLĘDNE FRONTEM DO ŚRODKA POKOJU
-    worldCursor.translateZ((cabinets[0]?.d || 0.5) / 2);
+    worldCursor.rotation.y = Math.atan2(kitchenStart.inDx, kitchenStart.inDz);
+    // Kursor idealnie trzyma się ścian, brak odsuwania na sztywno!
     worldCursor.updateMatrixWorld();
 
     const finalResult = [];
@@ -702,7 +844,7 @@ export default function App() {
     });
 
     return finalResult;
-  }, [cabinets, kitchenStart, kitchenFlip]);
+  }, [cabinets, kitchenStart, kitchenFlip, worktopDepth]);
 
   // ŚLEDZENIE ŚRODKA SCENY PRZEZ KAMERĘ
   const sceneCenter = useMemo(() => {
@@ -881,7 +1023,14 @@ export default function App() {
                 
                 // --- NOWOŚĆ: ZATWIERDZENIE STARTU KUCHNI ---
                 if (isRoomClosed) {
-                  if (previewKitchenStart) setKitchenStart(previewKitchenStart);
+                  if (previewKitchenStart) {
+                    setKitchenStart(previewKitchenStart);
+                    // Inteligentne zabezpieczenie - system od razu wie, w którą stronę można iść z rogu!
+                    const dA = Math.round(Math.sqrt((previewKitchenStart.x - previewKitchenStart.wallA.x)**2 + (previewKitchenStart.z - previewKitchenStart.wallA.z)**2) * 100);
+                    const dB = Math.round(Math.sqrt((previewKitchenStart.x - previewKitchenStart.wallB.x)**2 + (previewKitchenStart.z - previewKitchenStart.wallB.z)**2) * 100);
+                    if (dA <= 10) setKitchenFlip(false); // Blokujemy kierunek "w ścianę"
+                    if (dB <= 10) setKitchenFlip(true);  // Blokujemy kierunek "w ścianę"
+                  }
                   return;
                 }
 
@@ -1117,9 +1266,56 @@ export default function App() {
                 {!kitchenStart ? (
                   <h3 style={{ color: '#0277bd', margin: 0, fontSize: '15px' }}>👆 Świetnie! Teraz najedź na narysowaną ścianę i kliknij, aby wskazać miejsce, od którego zaczną się dodawać szafki.</h3>
                 ) : (
-                  <button onClick={() => setKitchenFlip(!kitchenFlip)} style={{ padding: '10px 20px', backgroundColor: '#f39c12', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', width: '100%' }}>
-                    🔄 Zmień kierunek dodawania szafek lewo/prawo
-                  </button>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {(() => {
+                      const dA = Math.round(Math.sqrt((kitchenStart.x - kitchenStart.wallA.x)**2 + (kitchenStart.z - kitchenStart.wallA.z)**2) * 100);
+                      const dB = Math.round(Math.sqrt((kitchenStart.x - kitchenStart.wallB.x)**2 + (kitchenStart.z - kitchenStart.wallB.z)**2) * 100);
+                      const isCorner = dA <= 10 || dB <= 10;
+                      
+                      return (
+                        <>
+                          {/* Przycisk LEWO/PRAWO pokazujemy TYLKO gdy jesteśmy na prostej ścianie */}
+                          {!isCorner && (
+                            <button onClick={() => setKitchenFlip(!kitchenFlip)} style={{ padding: '10px 20px', backgroundColor: '#f39c12', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', width: '100%' }}>
+                              🔄 Zmień kierunek dodawania szafek lewo/prawo
+                            </button>
+                          )}
+                          
+                          {/* Przycisk ZMIANY ŚCIANY pokazujemy TYLKO w rogu */}
+                          {isCorner && (
+                            <button onClick={() => {
+                               const isAtA = dA <= 10;
+                               let newIdx = isAtA ? kitchenStart.wallIndex - 1 : kitchenStart.wallIndex + 1;
+                               if (newIdx < 0) newIdx = wallNodes.length - 2;
+                               if (newIdx > wallNodes.length - 2) newIdx = 0;
+                               
+                               const nA = wallNodes[newIdx];
+                               const nB = wallNodes[newIdx + 1];
+                               const dx = nB.x - nA.x; const dz = nB.z - nA.z;
+                               const len = Math.sqrt(dx*dx + dz*dz);
+                               const inDx = kitchenStart.isClockwise ? -dz/len : dz/len;
+                               const inDz = kitchenStart.isClockwise ? dx/len : -dx/len;
+                               
+                               setKitchenStart({
+                                 ...kitchenStart,
+                                 wallIndex: newIdx,
+                                 wallA: nA, wallB: nB,
+                                 t: isAtA ? 1.0 : 0.0,
+                                 x: isAtA ? nB.x : nA.x,
+                                 z: isAtA ? nB.z : nA.z,
+                                 inDx, inDz, angle: Math.atan2(inDx, inDz)
+                               });
+                               
+                               // AUTOMATYCZNIE wymuszamy kierunek do wnętrza dla nowej ściany!
+                               setKitchenFlip(isAtA ? true : false);
+                            }} style={{ padding: '10px 20px', backgroundColor: '#3498db', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', width: '100%', boxShadow: '0 2px 10px rgba(52, 152, 219, 0.3)' }}>
+                              📐 Zmień ścianę startową w tym rogu (Obróć strzałkę o 90°)
+                            </button>
+                          )}
+                        </>
+                      );
+                    })()}
+                  </div>
                 )}
               </div>
             )}
@@ -1223,7 +1419,7 @@ export default function App() {
 
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '30px', paddingBottom: '10px' }}>
                 {cabinets.map((cab, i) => (
-                  <button key={cab.id} onClick={() => setActiveIdx(i)} style={{ display: 'flex', flexDirection: 'column', gap: '5px', padding: '10px', backgroundColor: i === activeIdx ? '#2e7d32' : '#fff', color: i === activeIdx ? '#fff' : '#333', border: i === activeIdx ? '1px solid #1b5e20' : '1px solid #ddd', borderRadius: '8px', cursor: 'pointer', minWidth: '95px', alignItems: 'center' }}>
+                  <button key={cab.id} onClick={() => { setActiveIdx(i); setHighlightKey(Date.now()); }} style={{ display: 'flex', flexDirection: 'column', gap: '5px', padding: '10px', backgroundColor: i === activeIdx ? '#2e7d32' : '#fff', color: i === activeIdx ? '#fff' : '#333', border: i === activeIdx ? '1px solid #1b5e20' : '1px solid #ddd', borderRadius: '8px', cursor: 'pointer', minWidth: '95px', alignItems: 'center' }}>
                     <MiniaturaSzafki cab={{...cab, w: 0.6, h: 0.82}} size={40} showHandles={true} />
                     <span style={{ fontSize: '11px', fontWeight: 'bold', textTransform: 'capitalize', textAlign: 'center' }}>
                       {cab.type} {Math.round(cab.w * 100)}
@@ -1388,7 +1584,7 @@ export default function App() {
                 <ambientLight intensity={0.9} /><pointLight position={[10, 10, 10]} intensity={1.5} /><directionalLight position={[-5, 5, -5]} intensity={1} />
                 <Suspense fallback={null}>
                   {/* TUTAJ WSTAWIAMY NASZE ŚCIANY */}
-                  <Walls3D nodes={wallNodes} />
+                  <Walls3D nodes={wallNodes} sceneCenter={sceneCenter} />
                   {layout.map((item, index) => {
               let cab = cabinets[index];
               
@@ -1433,6 +1629,23 @@ export default function App() {
                      </group>
                   )}
                   
+                  {index === activeIdx && (
+                    <CabinetHighlight 
+                      key={highlightKey} 
+                      cab={cab} 
+                      isFlipped={isFlipped}
+                      showWorktop={showWorktopGlobal && cab.hasWorktop && cab.type !== 'puste'}
+                      worktopDepth={worktopDepth}
+                      nextIsFlipped={(() => {
+                         const nextCab = cabinets[index + 1];
+                         let nif = (nextCab && nextCab.type !== 'naroznik') ? (nextCab.reverseFront || false) : false;
+                         const nextCornersBefore = cabinets.slice(0, index + 1).filter(c => c.type === 'naroznik').length;
+                         if (nextCornersBefore === 2 && nextCab && nextCab.type !== 'naroznik') nif = !nif;
+                         return nif;
+                      })()}
+                    />
+                  )}
+
                   {showWorktopGlobal && cab.hasWorktop && cab.type !== 'puste' && (() => {
                      const nextCab = cabinets[index + 1];
                      let nextIsFlipped = (nextCab && nextCab.type !== 'naroznik') ? (nextCab.reverseFront || false) : false;
