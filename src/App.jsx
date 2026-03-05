@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, Suspense, Component, useMemo } from 'react'
 import { Canvas, useFrame } from '@react-three/fiber'
-import { OrbitControls, useTexture } from '@react-three/drei'
-import * as THREE from 'three' 
+import { OrbitControls, useTexture, Text, RoundedBox } from '@react-three/drei'
+import * as THREE from 'three'
 
 // --- 1. ZABEZPIECZENIE TEKSTUR ---
 class TextureErrorBoundary extends Component {
@@ -673,6 +673,130 @@ function CabinetHighlight({ cab, isFlipped, showWorktop, worktopDepth, nextIsFli
   );
 }
 
+// --- ZAKTUALIZOWANY KOMPONENT: OSTRZEŻENIE (ZAAWANSOWANE BEZPIECZEŃSTWO OTWARTYCH ŚCIAN) ---
+function CabinetError({ cab, isFlipped, polyNodes, showWorktop, worktopDepth, nextIsFlipped, sceneCenter }) {
+  const h = cab.h + 0.1;
+  const isCorner = cab.type === 'naroznik';
+  const wtCenterZ = (cab.d / 2 + 0.03) - ((worktopDepth || 0.6) / 2);
+
+  const errorMat = useMemo(() => {
+    return new THREE.ShaderMaterial({
+      uniforms: {
+        uColor: { value: new THREE.Color("#e74c3c") },
+        uPoly: { value: new Array(30).fill(new THREE.Vector2()) },
+        uCount: { value: 0 },
+        uCenter: { value: new THREE.Vector2(0, 0) } 
+      },
+      vertexShader: `
+        varying vec3 vWorldPos;
+        void main() {
+          vec4 worldPosition = modelMatrix * vec4(position, 1.0);
+          vWorldPos = worldPosition.xyz;
+          gl_Position = projectionMatrix * viewMatrix * worldPosition;
+        }
+      `,
+      fragmentShader: `
+        uniform vec3 uColor;
+        uniform vec2 uPoly[30];
+        uniform int uCount;
+        uniform vec2 uCenter;
+        varying vec3 vWorldPos;
+
+        void main() {
+          vec2 p = vec2(vWorldPos.x, vWorldPos.z);
+          
+          if (length(uCenter - p) > 0.0) {
+             vec2 dir = normalize(uCenter - p);
+             p = p + dir * 0.003; 
+          }
+          
+          bool isInside = false;
+          
+          for (int i = 0; i < 30; i++) {
+            if (i >= uCount) break;
+            int j = (i == 0) ? uCount - 1 : i - 1;
+            vec2 v1 = uPoly[i];
+            vec2 v2 = uPoly[j];
+            
+            if ((v1.y > p.y) != (v2.y > p.y)) {
+               float diff = v2.y - v1.y;
+               if (diff != 0.0) {
+                  if (p.x < (v2.x - v1.x) * (p.y - v1.y) / diff + v1.x) {
+                     isInside = !isInside;
+                  }
+               }
+            }
+          }
+
+          if (isInside) {
+            discard; 
+          }
+          
+          gl_FragColor = vec4(uColor, 0.6);
+        }
+      `,
+      transparent: true,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+      polygonOffset: true,
+      polygonOffsetFactor: -4,
+      polygonOffsetUnits: -4
+    });
+  }, []);
+
+  useFrame(() => {
+    if (sceneCenter) errorMat.uniforms.uCenter.value.set(sceneCenter[0], sceneCenter[2]);
+    if (polyNodes && polyNodes.length > 0) {
+      const count = Math.min(polyNodes.length, 30);
+      const arr = [];
+      for(let i=0; i<30; i++) {
+        if (i < count) arr.push(new THREE.Vector2(polyNodes[i].x, polyNodes[i].z));
+        else arr.push(new THREE.Vector2(0,0));
+      }
+      errorMat.uniforms.uPoly.value = arr;
+      errorMat.uniforms.uCount.value = count;
+    }
+  });
+
+  return (
+    <group>
+       <group rotation={[0, isFlipped ? Math.PI : 0, 0]}>
+         <group position={[0, h/2, 0]}>
+           <mesh material={errorMat}>
+             <boxGeometry args={[cab.w, h, cab.d]} />
+           </mesh>
+           {isCorner && (
+             <mesh material={errorMat} position={[(cab.cornerSide === 'prawy' ? 1 : -1) * (cab.w/2 - 0.5 + (cab.d2 || 0.5)/2), 0, (cab.w2 || 0.9)/2 - cab.d/2]}>
+               <boxGeometry args={[(cab.d2 || 0.5), h, (cab.w2 || 0.9) - 0.5]} />
+             </mesh>
+           )}
+         </group>
+       </group>
+
+       {showWorktop && (
+         isCorner ? (
+           <group position={[0, cab.h + 0.119, 0]} rotation={[0, isFlipped ? Math.PI : 0, 0]}>
+             <mesh position={[(cab.cornerSide==='prawy'?1:-1) * (worktopDepth - 0.5 - 0.03) / 2, 0, (0.5 / 2 + 0.03) - (worktopDepth / 2)]} material={errorMat}>
+               <boxGeometry args={[cab.w + (worktopDepth - 0.5 - 0.03), 0.038, worktopDepth]} />
+             </mesh>
+             <mesh
+               position={[(cab.cornerSide==='prawy'?1:-1) * (cab.w/2 - 0.5 - 0.03 + worktopDepth/2), 0, (cab.w2||0.9)/2 + 0.015]}
+               rotation={[0, (cab.cornerSide === 'prawy' ? -Math.PI / 2 : Math.PI / 2) + (nextIsFlipped ? Math.PI : 0), 0]}
+               material={errorMat}
+             >
+               <boxGeometry args={[(cab.w2||0.9) - 0.5 - 0.03, 0.038, worktopDepth]} />
+             </mesh>
+           </group>
+         ) : (
+           <mesh position={[0, cab.h + 0.119, isFlipped ? -wtCenterZ : wtCenterZ]} material={errorMat}>
+             <boxGeometry args={[cab.w, 0.038, worktopDepth]} />
+           </mesh>
+         )
+       )}
+    </group>
+  );
+}
+
 // --- 6. APLIKACJA GŁÓWNA ---
 export default function App() {
   const [currentStep, setCurrentStep] = useState(1); // Zaczynamy od Kroku 1
@@ -813,7 +937,7 @@ export default function App() {
     worldCursor.updateMatrixWorld();
 
     const finalResult = [];
-    localResult.forEach(item => {
+    localResult.forEach((item, index) => {
       const dummy = new THREE.Object3D();
       dummy.position.set(item.pos[0], item.pos[1], item.pos[2]);
       dummy.rotation.y = item.rot;
@@ -832,6 +956,133 @@ export default function App() {
       dummy.getWorldQuaternion(worldQuat);
       const euler = new THREE.Euler().setFromQuaternion(worldQuat, 'YXZ');
 
+      let isInside = true;
+      let polyNodes = []; // NAPRAWA: Definiujemy zmienną wyżej, by cała pętla ją widziała (likwiduje biały ekran!)
+
+      if (wallNodes && wallNodes.length >= 3) {
+        const cab = cabinets.find(c => c.id === item.id); 
+        const hw = cab.w / 2;
+        const hd = cab.d / 2;
+        const checkPoints = [
+          new THREE.Vector3(0, 0, 0), new THREE.Vector3(hw, 0, hd), new THREE.Vector3(-hw, 0, hd),
+          new THREE.Vector3(hw, 0, -hd), new THREE.Vector3(-hw, 0, -hd), new THREE.Vector3(hw, 0, 0),
+          new THREE.Vector3(-hw, 0, 0), new THREE.Vector3(0, 0, hd), new THREE.Vector3(0, 0, -hd)
+        ];
+        
+        if (cab.type === 'naroznik') {
+           const sign = cab.cornerSide === 'prawy' ? 1 : -1;
+           checkPoints.push(new THREE.Vector3(sign * (hw - (cab.d2 || 0.5)), 0, (cab.w2 || 0.9) - hd));
+           checkPoints.push(new THREE.Vector3(sign * hw, 0, (cab.w2 || 0.9) - hd));
+        }
+
+        if (showWorktopGlobal && cab.hasWorktop && cab.type !== 'puste') {
+           const hwd = worktopDepth / 2;
+           let isFlippedLocal = cab.reverseFront || false;
+           const cornersBefore = cabinets.slice(0, index).filter(c => c.type === 'naroznik').length;
+           if (cab.type === 'naroznik') isFlippedLocal = (cornersBefore === 2);
+           else if (cornersBefore === 2) isFlippedLocal = !isFlippedLocal; 
+
+           if (cab.type === 'naroznik') {
+              const sign = cab.cornerSide === 'prawy' ? 1 : -1;
+              const flipMult = isFlippedLocal ? -1 : 1; // Mnożnik odwracający WSZYSTKIE osie, nie tylko Z
+              
+              // Blat Główny Narożnika
+              const w1 = cab.w + (worktopDepth - 0.53);
+              const cx1 = sign * (worktopDepth - 0.53) / 2;
+              const cz1 = 0.28 - hwd; 
+              
+              checkPoints.push(
+                 new THREE.Vector3(flipMult * (cx1 + w1/2), 0, flipMult * (cz1 + hwd)),
+                 new THREE.Vector3(flipMult * (cx1 + w1/2), 0, flipMult * (cz1 - hwd)),
+                 new THREE.Vector3(flipMult * (cx1 - w1/2), 0, flipMult * (cz1 + hwd)),
+                 new THREE.Vector3(flipMult * (cx1 - w1/2), 0, flipMult * (cz1 - hwd))
+              );
+
+              // Blat Boczny Narożnika
+              const w2 = (cab.w2 || 0.9) - 0.53;
+              const cx2 = sign * (cab.w/2 - 0.53 + hwd);
+              const cz2 = (cab.w2 || 0.9)/2 + 0.015;
+              
+              checkPoints.push(
+                 new THREE.Vector3(flipMult * (cx2 + hwd), 0, flipMult * (cz2 + w2/2)),
+                 new THREE.Vector3(flipMult * (cx2 + hwd), 0, flipMult * (cz2 - w2/2)),
+                 new THREE.Vector3(flipMult * (cx2 - hwd), 0, flipMult * (cz2 + w2/2)),
+                 new THREE.Vector3(flipMult * (cx2 - hwd), 0, flipMult * (cz2 - w2/2))
+              );
+           } else {
+              const wtCenterZ = (cab.d / 2 + 0.03) - hwd;
+              const localZ = isFlippedLocal ? -wtCenterZ : wtCenterZ;
+              checkPoints.push(
+                 new THREE.Vector3(hw, 0, localZ + hwd), new THREE.Vector3(-hw, 0, localZ + hwd),
+                 new THREE.Vector3(hw, 0, localZ - hwd), new THREE.Vector3(-hw, 0, localZ - hwd)
+              );
+           }
+        }
+
+        // NAPRAWA: Zmienna polyNodes jest już zadeklarowana wyżej, więc usuwamy 'let'
+        const isRoomClosed = wallNodes.length > 2 && wallNodes[0].x === wallNodes[wallNodes.length-1].x && wallNodes[0].z === wallNodes[wallNodes.length-1].z;
+        
+        if (isRoomClosed) {
+          polyNodes = wallNodes.slice(0, -1);
+        } else if (wallNodes.length > 1) {
+          const n = wallNodes.length;
+          const isCW = kitchenStart ? kitchenStart.isClockwise : true;
+
+          const fA = wallNodes[0], fB = wallNodes[1];
+          const fLen = Math.sqrt((fB.x-fA.x)**2 + (fB.z-fA.z)**2) || 1;
+
+          const lA = wallNodes[n-2], lB = wallNodes[n-1];
+          const lLen = Math.sqrt((lB.x-lA.x)**2 + (lB.z-lA.z)**2) || 1;
+
+          // NAPRAWA OSTATECZNA:
+          // Zamiast przedłużać wirtualne ściany w nieskończoność (co maskowało błąd wystającego blatu narożnika),
+          // tworzymy wielokąt obcinający się DOKŁADNIE na końcach narysowanych przez Ciebie ścian!
+          for (let i = 0; i < n; i++) polyNodes.push(wallNodes[i]);
+
+          // Wektory skierowane 10 metrów w głąb kuchni, tworzące bezpieczny schron dla frontów
+          const inDxL = isCW ? -(lB.z-lA.z)/lLen : (lB.z-lA.z)/lLen;
+          const inDzL = isCW ? (lB.x-lA.x)/lLen : -(lB.x-lA.x)/lLen;
+          const inDxF = isCW ? -(fB.z-fA.z)/fLen : (fB.z-fA.z)/fLen;
+          const inDzF = isCW ? (fB.x-fA.x)/fLen : -(fB.x-fA.x)/fLen;
+
+          // Domknięcie pokoju idealnie pod kątem prostym od ostatnich punktów narysowanej ściany
+          polyNodes.push({ x: lB.x + inDxL * 10, z: lB.z + inDzL * 10 });
+          polyNodes.push({ x: fA.x + inDxF * 10, z: fA.z + inDzF * 10 });
+        } else {
+          polyNodes = [...wallNodes];
+        }
+
+        for (let pt of checkPoints) {
+          const wpt = pt.clone();
+          dummy.localToWorld(wpt);
+          const px = wpt.x; const pz = wpt.z;
+          let insidePt = false;
+          let isCloseToEdge = false; 
+
+          for (let i = 0, j = polyNodes.length - 1; i < polyNodes.length; j = i++) {
+            let xi = polyNodes[i].x, zi = polyNodes[i].z;
+            let xj = polyNodes[j].x, zj = polyNodes[j].z;
+            
+            let intersect = ((zi > pz) !== (zj > pz)) && (px < (xj - xi) * (pz - zi) / (zj - zi) + xi);
+            if (intersect) insidePt = !insidePt;
+
+            // TOLERANCJA BŁĘDÓW STYKU 5 mm:
+            // Szafki równe ze ścianą mają teraz bezpieczny bufor przed fałszywym alarmem!
+            let l2 = (xj - xi)**2 + (zj - zi)**2;
+            if (l2 > 0) {
+                let t = ((px - xi)*(xj - xi) + (pz - zi)*(zj - zi)) / l2;
+                t = Math.max(0, Math.min(1, t));
+                let projX = xi + t * (xj - xi);
+                let projZ = zi + t * (zj - zi);
+                if (Math.sqrt((px - projX)**2 + (pz - projZ)**2) <= 0.005) {
+                    isCloseToEdge = true; 
+                }
+            }
+          }
+          if (!insidePt && !isCloseToEdge) { isInside = false; break; } 
+        }
+      }
+
       worldCursor.remove(dummy);
 
       finalResult.push({
@@ -839,12 +1090,14 @@ export default function App() {
         pos: [worldPos.x, worldPos.y, worldPos.z],
         rot: euler.y,
         dist: item.dist,
-        crossDist: item.crossDist
+        crossDist: item.crossDist,
+        isOutOfBounds: !isInside,
+        polyNodes: polyNodes // Wyrzucamy bezpieczny wielokąt do shadera
       });
     });
 
     return finalResult;
-  }, [cabinets, kitchenStart, kitchenFlip, worktopDepth]);
+  }, [cabinets, kitchenStart, kitchenFlip, worktopDepth, wallNodes, showWorktopGlobal]); // NAPRAWA: Dodano showWorktopGlobal do zależności!
 
   // ŚLEDZENIE ŚRODKA SCENY PRZEZ KAMERĘ
   const sceneCenter = useMemo(() => {
@@ -1580,7 +1833,8 @@ export default function App() {
 
             {/* PRAWY PANEL (Canvas 3D) */}
             <div style={{ flex: 1 }}>
-              <Canvas camera={{ position: [sceneCenter[0] - 4, 1.8, sceneCenter[2]], fov: 55 }}>
+              {/* Dodane gl={{ stencil: true }} dla 100% pewności, że maskowanie zadziała w każdej przeglądarce */}
+              <Canvas gl={{ stencil: true }} camera={{ position: [sceneCenter[0] - 4, 1.8, sceneCenter[2]], fov: 55 }}>
                 <ambientLight intensity={0.9} /><pointLight position={[10, 10, 10]} intensity={1.5} /><directionalLight position={[-5, 5, -5]} intensity={1} />
                 <Suspense fallback={null}>
                   {/* TUTAJ WSTAWIAMY NASZE ŚCIANY */}
@@ -1634,6 +1888,25 @@ export default function App() {
                       key={highlightKey} 
                       cab={cab} 
                       isFlipped={isFlipped}
+                      showWorktop={showWorktopGlobal && cab.hasWorktop && cab.type !== 'puste'}
+                      worktopDepth={worktopDepth}
+                      nextIsFlipped={(() => {
+                         const nextCab = cabinets[index + 1];
+                         let nif = (nextCab && nextCab.type !== 'naroznik') ? (nextCab.reverseFront || false) : false;
+                         const nextCornersBefore = cabinets.slice(0, index + 1).filter(c => c.type === 'naroznik').length;
+                         if (nextCornersBefore === 2 && nextCab && nextCab.type !== 'naroznik') nif = !nif;
+                         return nif;
+                      })()}
+                    />
+                  )}
+
+                  {/* NOWOŚĆ: OSTRZEŻENIE O BŁĘDZIE - RYSOWANIE Z BEZPIECZNĄ STREFĄ */}
+                  {item.isOutOfBounds && (
+                    <CabinetError 
+                      cab={cab} 
+                      isFlipped={isFlipped} 
+                      polyNodes={item.polyNodes} 
+                      sceneCenter={sceneCenter}
                       showWorktop={showWorktopGlobal && cab.hasWorktop && cab.type !== 'puste'}
                       worktopDepth={worktopDepth}
                       nextIsFlipped={(() => {
@@ -1700,6 +1973,74 @@ export default function App() {
                 </group>
               );
             })}
+
+                  {/* NOWOŚĆ: GRUPOWANIE NAPISÓW OSTRZEGAWCZYCH (JEDEN NAD KILKOMA SZAFKAMI) */}
+                  {(() => {
+                    const errorGroups = [];
+                    let currentGroup = [];
+                    
+                    layout.forEach((item) => {
+                      if (item.isOutOfBounds) {
+                        const cab = cabinets.find(c => c.id === item.id);
+                        currentGroup.push({ ...item, cabH: cab ? cab.h : 0.82 });
+                      } else {
+                        if (currentGroup.length > 0) {
+                          errorGroups.push(currentGroup);
+                          currentGroup = [];
+                        }
+                      }
+                    });
+                    if (currentGroup.length > 0) errorGroups.push(currentGroup);
+
+                    return errorGroups.map((group, gIdx) => {
+                      let avgX = 0, avgZ = 0, maxH = 0;
+                      group.forEach(item => {
+                        avgX += item.pos[0];
+                        avgZ += item.pos[2];
+                        if (item.cabH > maxH) maxH = item.cabH;
+                      });
+                      avgX /= group.length;
+                      avgZ /= group.length;
+
+                      // Inteligentny kąt: pobieramy obrót szafek i obracamy o 90 stopni (Math.PI / 2), aby tekst był idealnie na wprost frontów!
+                      const baseRot = group[0].rot + (Math.PI / 2);
+
+                      return (
+                        <group key={`error-label-${gIdx}`} position={[avgX, maxH + 0.5, avgZ]} rotation={[0, baseRot, 0]}>
+                           {/* NOWOŚĆ: Fizyczna biała tabliczka tła z zaokrąglonymi rogami, w pełni nieprzezroczysta */}
+                           <RoundedBox args={[2.25, 0.28, 0.012]} radius={0.06} smoothness={4} position={[0, 0, 0]}>
+                             <meshBasicMaterial color="#ffffff" />
+                           </RoundedBox>
+
+                           {/* Napis z PRZODU (odsunięty na 0.008, dla pewności braku przenikania) */}
+                           <Text
+                             position={[0, 0, 0.008]}
+                             fontSize={0.12}
+                             color="#e74c3c"
+                             anchorX="center"
+                             anchorY="middle"
+                             fontWeight="bold"
+                           >
+                             WYMIARY WIĘKSZE NIŻ ŚCIANA!
+                           </Text>
+                           
+                           {/* Napis z TYŁU (sklejony plecami, odwrócony o 180 stopni) */}
+                           <Text
+                             position={[0, 0, -0.008]}
+                             rotation={[0, Math.PI, 0]}
+                             fontSize={0.12}
+                             color="#e74c3c"
+                             anchorX="center"
+                             anchorY="middle"
+                             fontWeight="bold"
+                           >
+                             WYMIARY WIĘKSZE NIŻ ŚCIANA!
+                           </Text>
+                        </group>
+                      );
+                    });
+                  })()}
+
                 </Suspense>
                 <OrbitControls makeDefault target={sceneCenter} enablePan={true} />
               </Canvas>
