@@ -766,7 +766,9 @@ function CabinetError({ cab, isFlipped, polyNodes, showWorktop, worktopDepth, ne
              <boxGeometry args={[cab.w, h, cab.d]} />
            </mesh>
            {isCorner && (
-             <mesh material={errorMat} position={[(cab.cornerSide === 'prawy' ? 1 : -1) * (cab.w/2 - 0.5 + (cab.d2 || 0.5)/2), 0, (cab.w2 || 0.9)/2 - cab.d/2]}>
+             // POPRAWKA: Usunięto błąd "- cab.d/2" w osi Z. Teraz siatka błędu 
+             // korpusu idealnie pokrywa się z fizycznym końcem szafki.
+             <mesh material={errorMat} position={[(cab.cornerSide === 'prawy' ? 1 : -1) * (cab.w/2 - 0.5 + (cab.d2 || 0.5)/2), 0, (cab.w2 || 0.9)/2]}>
                <boxGeometry args={[(cab.d2 || 0.5), h, (cab.w2 || 0.9) - 0.5]} />
              </mesh>
            )}
@@ -984,30 +986,44 @@ export default function App() {
 
            if (cab.type === 'naroznik') {
               const sign = cab.cornerSide === 'prawy' ? 1 : -1;
-              const flipMult = isFlippedLocal ? -1 : 1; // Mnożnik odwracający WSZYSTKIE osie, nie tylko Z
-              
+              const flipMult = isFlippedLocal ? -1 : 1;
+
               // Blat Główny Narożnika
               const w1 = cab.w + (worktopDepth - 0.53);
               const cx1 = sign * (worktopDepth - 0.53) / 2;
-              const cz1 = 0.28 - hwd; 
-              
+              const cz1 = 0.28 - hwd;
+
+              // POPRAWKA: Dodajemy stały, 2-centymetrowy narzut bezpieczeństwa (0.02) na KAŻDĄ 
+              // krawędź głównego blatu. Dzięki temu wyprzedzi on fizyczny korpus narożnika 
+              // i ominie "martwą strefę" tolerancji rysowania ścian.
+              const right1 = cx1 + w1/2 + 0.02;
+              const left1 = cx1 - w1/2 - 0.02;
+              const front1 = cz1 + hwd + 0.02;
+              const back1 = cz1 - hwd - 0.02;
+
               checkPoints.push(
-                 new THREE.Vector3(flipMult * (cx1 + w1/2), 0, flipMult * (cz1 + hwd)),
-                 new THREE.Vector3(flipMult * (cx1 + w1/2), 0, flipMult * (cz1 - hwd)),
-                 new THREE.Vector3(flipMult * (cx1 - w1/2), 0, flipMult * (cz1 + hwd)),
-                 new THREE.Vector3(flipMult * (cx1 - w1/2), 0, flipMult * (cz1 - hwd))
+                 new THREE.Vector3(flipMult * right1, 0, flipMult * front1),
+                 new THREE.Vector3(flipMult * right1, 0, flipMult * back1),
+                 new THREE.Vector3(flipMult * left1, 0, flipMult * front1),
+                 new THREE.Vector3(flipMult * left1, 0, flipMult * back1)
               );
 
               // Blat Boczny Narożnika
               const w2 = (cab.w2 || 0.9) - 0.53;
               const cx2 = sign * (cab.w/2 - 0.53 + hwd);
               const cz2 = (cab.w2 || 0.9)/2 + 0.015;
-              
+
+              // POPRAWKA: Podnosimy narzut również dla bocznego ramienia na równe 0.02 dla pewności.
+              const right2 = cx2 + hwd + 0.02;
+              const left2 = cx2 - hwd - 0.02;
+              const front2 = cz2 + w2/2 + 0.02; 
+              const back2 = cz2 - w2/2 - 0.02;
+
               checkPoints.push(
-                 new THREE.Vector3(flipMult * (cx2 + hwd), 0, flipMult * (cz2 + w2/2)),
-                 new THREE.Vector3(flipMult * (cx2 + hwd), 0, flipMult * (cz2 - w2/2)),
-                 new THREE.Vector3(flipMult * (cx2 - hwd), 0, flipMult * (cz2 + w2/2)),
-                 new THREE.Vector3(flipMult * (cx2 - hwd), 0, flipMult * (cz2 - w2/2))
+                 new THREE.Vector3(flipMult * right2, 0, flipMult * front2),
+                 new THREE.Vector3(flipMult * right2, 0, flipMult * back2),
+                 new THREE.Vector3(flipMult * left2, 0, flipMult * front2),
+                 new THREE.Vector3(flipMult * left2, 0, flipMult * back2)
               );
            } else {
               const wtCenterZ = (cab.d / 2 + 0.03) - hwd;
@@ -1979,8 +1995,104 @@ export default function App() {
                     const errorGroups = [];
                     let currentGroup = [];
                     
-                    layout.forEach((item) => {
+                    layout.forEach((item, index) => {
+                      let showText = false;
+                      
+                      // KROK 1: Czy system zasygnalizował ogólne ryzyko błędu?
                       if (item.isOutOfBounds) {
+                        const cab = cabinets.find(c => c.id === item.id);
+                        if (cab && item.polyNodes && item.polyNodes.length >= 3) {
+                          // KROK 2: Mechanizm Napisu (Symulacja Shadera 1:1)
+                          const hw = cab.w / 2; const hd = cab.d / 2;
+                          const hwd = worktopDepth / 2;
+                          
+                          // Wyznaczanie obrotu szafki przeniesione na górę
+                          let isFlippedLocal = cab.reverseFront || false;
+                          const cornersBefore = cabinets.slice(0, index).filter(c => c.type === 'naroznik').length;
+                          if (cab.type === 'naroznik') isFlippedLocal = (cornersBefore === 2);
+                          else if (cornersBefore === 2) isFlippedLocal = !isFlippedLocal; 
+                          const flipMult = isFlippedLocal ? -1 : 1;
+
+                          // Aplikujemy `flipMult` na główny korpus
+                          const strictPoints = [
+                            new THREE.Vector3(0, 0, 0), 
+                            new THREE.Vector3(flipMult * hw, 0, flipMult * hd), 
+                            new THREE.Vector3(flipMult * -hw, 0, flipMult * hd),
+                            new THREE.Vector3(flipMult * hw, 0, flipMult * -hd), 
+                            new THREE.Vector3(flipMult * -hw, 0, flipMult * -hd)
+                          ];
+                          
+                          if (cab.type === 'naroznik') {
+                            const sign = cab.cornerSide === 'prawy' ? 1 : -1;
+                            // Aplikujemy `flipMult` na boczne ramię korpusu
+                            strictPoints.push(
+                                new THREE.Vector3(flipMult * (sign * (hw - (cab.d2 || 0.5))), 0, flipMult * ((cab.w2 || 0.9) - hd)),
+                                new THREE.Vector3(flipMult * (sign * hw), 0, flipMult * ((cab.w2 || 0.9) - hd))
+                            );
+                          }
+                          
+                          if (showWorktopGlobal && cab.hasWorktop && cab.type !== 'puste') {
+                            if (cab.type === 'naroznik') {
+                               const sign = cab.cornerSide === 'prawy' ? 1 : -1;
+                               const w1 = cab.w + (worktopDepth - 0.53);
+                               const cx1 = sign * (worktopDepth - 0.53) / 2;
+                               const cz1 = 0.28 - hwd;
+                               strictPoints.push(
+                                  new THREE.Vector3(flipMult * (cx1 + w1/2), 0, flipMult * (cz1 + hwd)),
+                                  new THREE.Vector3(flipMult * (cx1 + w1/2), 0, flipMult * (cz1 - hwd)),
+                                  new THREE.Vector3(flipMult * (cx1 - w1/2), 0, flipMult * (cz1 + hwd)),
+                                  new THREE.Vector3(flipMult * (cx1 - w1/2), 0, flipMult * (cz1 - hwd))
+                               );
+                               const w2 = (cab.w2 || 0.9) - 0.53;
+                               const cx2 = sign * (cab.w/2 - 0.53 + hwd);
+                               const cz2 = (cab.w2 || 0.9)/2 + 0.015;
+                               strictPoints.push(
+                                  new THREE.Vector3(flipMult * (cx2 + hwd), 0, flipMult * (cz2 + w2/2)),
+                                  new THREE.Vector3(flipMult * (cx2 + hwd), 0, flipMult * (cz2 - w2/2)),
+                                  new THREE.Vector3(flipMult * (cx2 - hwd), 0, flipMult * (cz2 + w2/2)),
+                                  new THREE.Vector3(flipMult * (cx2 - hwd), 0, flipMult * (cz2 - w2/2))
+                               );
+                            } else {
+                               const wtCenterZ = (cab.d / 2 + 0.03) - hwd;
+                               const localZ = isFlippedLocal ? -wtCenterZ : wtCenterZ;
+                               strictPoints.push(
+                                  new THREE.Vector3(hw, 0, localZ + hwd), new THREE.Vector3(-hw, 0, localZ + hwd),
+                                  new THREE.Vector3(hw, 0, localZ - hwd), new THREE.Vector3(-hw, 0, localZ - hwd)
+                               );
+                            }
+                          }
+
+                          let actuallyOutside = false;
+                          for (let pt of strictPoints) {
+                            const wpt = pt.clone();
+                            wpt.applyEuler(new THREE.Euler(0, item.rot, 0));
+                            wpt.add(new THREE.Vector3(item.pos[0], item.pos[1], item.pos[2]));
+                            
+                            let insidePt = false;
+                            let isClose = false;
+                            for (let i = 0, j = item.polyNodes.length - 1; i < item.polyNodes.length; j = i++) {
+                              let xi = item.polyNodes[i].x, zi = item.polyNodes[i].z;
+                              let xj = item.polyNodes[j].x, zj = item.polyNodes[j].z;
+                              if (((zi > wpt.z) !== (zj > wpt.z)) && (wpt.x < (xj - xi) * (wpt.z - zi) / (zj - zi) + xi)) insidePt = !insidePt;
+                              
+                              let l2 = (xj - xi)**2 + (zj - zi)**2;
+                              if (l2 > 0) {
+                                  let t = ((wpt.x - xi)*(xj - xi) + (wpt.z - zi)*(zj - zi)) / l2;
+                                  t = Math.max(0, Math.min(1, t));
+                                  let projX = xi + t * (xj - xi);
+                                  let projZ = zi + t * (zj - zi);
+                                  if (Math.sqrt((wpt.x - projX)**2 + (wpt.z - projZ)**2) <= 0.003) isClose = true;
+                              }
+                            }
+                            if (!insidePt && !isClose) { actuallyOutside = true; break; }
+                          }
+                          showText = actuallyOutside;
+                        } else {
+                          showText = true;
+                        }
+                      }
+
+                      if (showText) {
                         const cab = cabinets.find(c => c.id === item.id);
                         currentGroup.push({ ...item, cabH: cab ? cab.h : 0.82 });
                       } else {
