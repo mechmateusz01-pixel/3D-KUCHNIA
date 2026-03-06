@@ -563,6 +563,8 @@ function MiniaturaSzafki({ cab, size = 50, showHandles = true }) {
   const renderContent = () => {
     if (cab.type === 'puste') return renderEmptyX();
     if (cab.type === 'naroznik') return renderCornerIcon();
+    // NOWOŚĆ: Ikonka "..." dla przycisku INNE
+    if (cab.type === 'inne') return <div style={{width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px', fontWeight: 'bold', color: outlineColor, letterSpacing: '2px'}}>...</div>;
     if (cab.type === 'drzwi') return renderDoors();
     if (cab.type === 'szuflady') {
       return [33.33, 33.33, 33.34].map((r, i) => <div key={i} style={{ ...frontStyle, height: `${r}%` }}><Handle /></div>);
@@ -801,16 +803,21 @@ function CabinetError({ cab, isFlipped, polyNodes, showWorktop, worktopDepth, ne
 
 // --- 6. APLIKACJA GŁÓWNA ---
 export default function App() {
-  const [currentStep, setCurrentStep] = useState(1); // Zaczynamy od Kroku 1
-  const [wallNodes, setWallNodes] = useState([]); // W przyszłości tu będziemy trzymać narysowane ściany w 2D
+  // --- NOWOŚĆ: BAZA WIELU RZĘDÓW ---
+  const PALETA_RZEDOW = ['#40c057', '#3498db', '#9b59b6', '#f39c12', '#e74c3c'];
+  const [runs, setRuns] = useState([
+    { id: 'rzad-1', name: 'Rząd 1', color: PALETA_RZEDOW[0], start: null, flip: false, cabinets: [{ ...DOMYSLNA_SZAFKA, id: Date.now() }] }
+  ]);
+  const [activeRunIdx, setActiveRunIdx] = useState(0);
+
+  const [currentStep, setCurrentStep] = useState(1);
+  const [wallNodes, setWallNodes] = useState([]);
   const [previewNode, setPreviewNode] = useState(null);
   const [isHoveringStart, setIsHoveringStart] = useState(false);
-  const [kitchenStart, setKitchenStart] = useState(null);
   const [previewKitchenStart, setPreviewKitchenStart] = useState(null);
-  const [kitchenFlip, setKitchenFlip] = useState(false); // Opcja odbicia lustrzanego
-  const [showStartModal, setShowStartModal] = useState(false); // NOWOŚĆ: Okienko popout
+  const [showStartModal, setShowStartModal] = useState(false); 
+  const [showOtherModal, setShowOtherModal] = useState(false); // NOWOŚĆ: Steruje oknem "Inne szafki"
 
-  const [cabinets, setCabinets] = useState([{ ...DOMYSLNA_SZAFKA, id: Date.now() }]);
   const [activeIdx, setActiveIdx] = useState(0);
   const [highlightKey, setHighlightKey] = useState(Date.now());
   const [showWorktopGlobal, setShowWorktopGlobal] = useState(false);
@@ -818,6 +825,16 @@ export default function App() {
   const [worktopDepth, setWorktopDepth] = useState(0.60); 
   const [globalF, setGlobalF] = useState(domyslnyDekorKlucz);
   const [globalB, setGlobalB] = useState(domyslnyDekorKlucz);
+
+  // ALIASY KOMPATYBILNOŚCI: Cały stary kod używa tego, by bezpiecznie edytować "aktywny ciąg"
+  const activeRun = runs[activeRunIdx] || runs[0];
+  const kitchenStart = activeRun.start;
+  const kitchenFlip = activeRun.flip;
+  const cabinets = activeRun.cabinets;
+
+  const setKitchenStart = (val) => setRuns(prev => prev.map((r, i) => i === activeRunIdx ? { ...r, start: typeof val === 'function' ? val(r.start) : val } : r));
+  const setKitchenFlip = (val) => setRuns(prev => prev.map((r, i) => i === activeRunIdx ? { ...r, flip: typeof val === 'function' ? val(r.flip) : val } : r));
+  const setCabinets = (val) => setRuns(prev => prev.map((r, i) => i === activeRunIdx ? { ...r, cabinets: typeof val === 'function' ? val(r.cabinets) : val } : r));
 
   const activeCab = cabinets[activeIdx] || cabinets[0];
   const updateActiveCab = (patch) => { setCabinets(prev => prev.map((cab, i) => i === activeIdx ? { ...cab, ...patch } : cab)); };
@@ -844,288 +861,278 @@ export default function App() {
     setHighlightKey(Date.now());
   };
 
-  const finalPrice = cabinets.reduce((sum, cab) => sum + (cab.type === 'puste' ? 0 : Math.round((cab.w * cab.h * cab.d * 1150) + (cab.type !== 'drzwi' ? cab.drawersC * 180 : 95))), 0);
+  // ZMIANA: Liczymy cenę ze WSZYSTKICH ciągów!
+  const finalPrice = runs.reduce((total, run) => total + run.cabinets.reduce((sum, cab) => sum + (cab.type === 'puste' ? 0 : Math.round((cab.w * cab.h * cab.d * 1150) + (cab.type !== 'drzwi' ? cab.drawersC * 180 : 95))), 0), 0);
 
-// SILNIK UKŁADU KUCHNI
-  const layout = useMemo(() => {
-    if (!kitchenStart) {
-      const res = [];
-      const cur = new THREE.Object3D();
-      let rD = 0; let cD = 0;
-      cabinets.forEach((cab) => {
+// SILNIK UKŁADU KUCHNI (TERAZ DLA WSZYSTKICH CIĄGÓW NARAZ)
+  const allLayouts = useMemo(() => {
+    return runs.map(run => {
+      const runCabinets = run.cabinets;
+      const runStart = run.start;
+      const runFlip = run.flip;
+
+      if (!runStart) {
+        const res = [];
+        const cur = new THREE.Object3D();
+        let rD = 0; let cD = 0;
+        runCabinets.forEach((cab) => {
+          const isCorner = cab.type === 'naroznik';
+          const effectiveD = isCorner ? 0.5 : cab.d;
+          const zOffset = worktopDepth - 0.03 - (effectiveD / 2);
+
+          cur.translateX(cab.w / 2);
+          cur.translateZ(zOffset);
+          cur.updateMatrixWorld();
+          res.push({ id: cab.id, pos: [cur.position.x, 0, cur.position.z], rot: cur.rotation.y, dist: rD, crossDist: cD });
+          cur.translateZ(-zOffset);
+
+          if (isCorner) {
+            const isRight = cab.cornerSide === 'prawy';
+            const safeW2 = cab.w2 || 1.0;
+            cur.translateX(-cab.w / 2);
+            cur.translateX(cab.w - 0.53 + worktopDepth);
+            if (isRight) { cur.rotateY(-Math.PI / 2); cD += 0.07; }
+            else { cur.rotateY(Math.PI / 2); cD -= 0.07; }
+            cur.translateX(safeW2 - 0.53 + worktopDepth);
+            rD += cab.w + safeW2 - 0.5;
+          } else {
+            cur.translateX(cab.w / 2);
+            rD += cab.w;
+          }
+        });
+        return res;
+      }
+
+      const localResult = [];
+      const localCursor = new THREE.Object3D();
+      let runDist = 0; let crossDist = 0;
+
+      const shouldFlip = (!runStart.isClockwise) !== runFlip;
+
+      runCabinets.forEach((cab) => {
         const isCorner = cab.type === 'naroznik';
         const effectiveD = isCorner ? 0.5 : cab.d;
+        
         const zOffset = worktopDepth - 0.03 - (effectiveD / 2);
 
-        cur.translateX(cab.w / 2);
-        cur.translateZ(zOffset);
-        cur.updateMatrixWorld();
-        res.push({ id: cab.id, pos: [cur.position.x, 0, cur.position.z], rot: cur.rotation.y, dist: rD, crossDist: cD });
-        cur.translateZ(-zOffset);
+        localCursor.translateX(cab.w / 2);
+        localCursor.translateZ(zOffset);
+        localCursor.updateMatrixWorld();
+        
+        localResult.push({ 
+          id: cab.id, 
+          pos: [localCursor.position.x, 0, localCursor.position.z], 
+          rot: localCursor.rotation.y, 
+          dist: runDist, 
+          crossDist: crossDist 
+        });
+        
+        localCursor.translateZ(-zOffset);
 
         if (isCorner) {
           const isRight = cab.cornerSide === 'prawy';
           const safeW2 = cab.w2 || 1.0;
-          cur.translateX(-cab.w / 2);
-          cur.translateX(cab.w - 0.53 + worktopDepth);
-          if (isRight) { cur.rotateY(-Math.PI / 2); cD += 0.07; }
-          else { cur.rotateY(Math.PI / 2); cD -= 0.07; }
-          cur.translateX(safeW2 - 0.53 + worktopDepth);
-          rD += cab.w + safeW2 - 0.5;
+          
+          localCursor.translateX(-cab.w / 2);
+          localCursor.translateX(cab.w - 0.53 + worktopDepth);
+          
+          if (isRight) {
+            localCursor.rotateY(-Math.PI / 2);
+            crossDist += 0.07;
+          } else {
+            localCursor.rotateY(Math.PI / 2);
+            crossDist -= 0.07;
+          }
+          
+          localCursor.translateX(safeW2 - 0.53 + worktopDepth);
+          runDist += cab.w + safeW2 - 0.5;
         } else {
-          cur.translateX(cab.w / 2);
-          rD += cab.w;
+          localCursor.translateX(cab.w / 2);
+          runDist += cab.w;
         }
       });
-      return res;
-    }
 
-    const localResult = [];
-    const localCursor = new THREE.Object3D();
-    let runDist = 0; let crossDist = 0;
-
-    const shouldFlip = (!kitchenStart.isClockwise) !== kitchenFlip;
-
-    cabinets.forEach((cab) => {
-      const isCorner = cab.type === 'naroznik';
-      const effectiveD = isCorner ? 0.5 : cab.d;
-      
-      // Magiczna matematyka - dopasowujemy środek szafki do ściany, by blat zawsze do niej dochodził!
-      const zOffset = worktopDepth - 0.03 - (effectiveD / 2);
-
-      localCursor.translateX(cab.w / 2);
-      localCursor.translateZ(zOffset);
-      localCursor.updateMatrixWorld();
-      
-      localResult.push({ 
-        id: cab.id, 
-        pos: [localCursor.position.x, 0, localCursor.position.z], 
-        rot: localCursor.rotation.y, 
-        dist: runDist, 
-        crossDist: crossDist 
-      });
-      
-      localCursor.translateZ(-zOffset);
-
-      if (isCorner) {
-        const isRight = cab.cornerSide === 'prawy';
-        const safeW2 = cab.w2 || 1.0;
-        
-        // Wracamy do brzegu narożnika i przeskakujemy do FIZYCZNEGO rogu ściany
-        localCursor.translateX(-cab.w / 2);
-        localCursor.translateX(cab.w - 0.53 + worktopDepth);
-        
-        if (isRight) {
-          localCursor.rotateY(-Math.PI / 2);
-          crossDist += 0.07;
-        } else {
-          localCursor.rotateY(Math.PI / 2);
-          crossDist -= 0.07;
-        }
-        
-        // Odjeżdżamy od nowego rogu, robiąc miejsce na całe ramię narożnika i nową lukę
-        localCursor.translateX(safeW2 - 0.53 + worktopDepth);
-        runDist += cab.w + safeW2 - 0.5;
-      } else {
-        localCursor.translateX(cab.w / 2);
-        runDist += cab.w;
-      }
-    });
-
-    const worldCursor = new THREE.Object3D();
-    worldCursor.position.set(kitchenStart.x, 0, kitchenStart.z);
-    worldCursor.rotation.y = Math.atan2(kitchenStart.inDx, kitchenStart.inDz);
-    // Kursor idealnie trzyma się ścian, brak odsuwania na sztywno!
-    worldCursor.updateMatrixWorld();
-
-    const finalResult = [];
-    localResult.forEach((item, index) => {
-      const dummy = new THREE.Object3D();
-      dummy.position.set(item.pos[0], item.pos[1], item.pos[2]);
-      dummy.rotation.y = item.rot;
-
-      if (shouldFlip) {
-        dummy.position.x = -dummy.position.x;
-        dummy.rotation.y = -dummy.rotation.y;
-      }
-
-      worldCursor.add(dummy);
+      const worldCursor = new THREE.Object3D();
+      worldCursor.position.set(runStart.x, 0, runStart.z);
+      worldCursor.rotation.y = Math.atan2(runStart.inDx, runStart.inDz);
       worldCursor.updateMatrixWorld();
 
-      const worldPos = new THREE.Vector3();
-      dummy.getWorldPosition(worldPos);
-      const worldQuat = new THREE.Quaternion();
-      dummy.getWorldQuaternion(worldQuat);
-      const euler = new THREE.Euler().setFromQuaternion(worldQuat, 'YXZ');
+      const finalResult = [];
+      localResult.forEach((item, index) => {
+        const dummy = new THREE.Object3D();
+        dummy.position.set(item.pos[0], item.pos[1], item.pos[2]);
+        dummy.rotation.y = item.rot;
 
-      let isInside = true;
-      let polyNodes = []; // NAPRAWA: Definiujemy zmienną wyżej, by cała pętla ją widziała (likwiduje biały ekran!)
-
-      if (wallNodes && wallNodes.length >= 3) {
-        const cab = cabinets.find(c => c.id === item.id); 
-        const hw = cab.w / 2;
-        const hd = cab.d / 2;
-        const checkPoints = [
-          new THREE.Vector3(0, 0, 0), new THREE.Vector3(hw, 0, hd), new THREE.Vector3(-hw, 0, hd),
-          new THREE.Vector3(hw, 0, -hd), new THREE.Vector3(-hw, 0, -hd), new THREE.Vector3(hw, 0, 0),
-          new THREE.Vector3(-hw, 0, 0), new THREE.Vector3(0, 0, hd), new THREE.Vector3(0, 0, -hd)
-        ];
-        
-        if (cab.type === 'naroznik') {
-           const sign = cab.cornerSide === 'prawy' ? 1 : -1;
-           checkPoints.push(new THREE.Vector3(sign * (hw - (cab.d2 || 0.5)), 0, (cab.w2 || 0.9) - hd));
-           checkPoints.push(new THREE.Vector3(sign * hw, 0, (cab.w2 || 0.9) - hd));
+        if (shouldFlip) {
+          dummy.position.x = -dummy.position.x;
+          dummy.rotation.y = -dummy.rotation.y;
         }
 
-        if (showWorktopGlobal && cab.hasWorktop && cab.type !== 'puste') {
-           const hwd = worktopDepth / 2;
-           let isFlippedLocal = cab.reverseFront || false;
-           const cornersBefore = cabinets.slice(0, index).filter(c => c.type === 'naroznik').length;
-           if (cab.type === 'naroznik') isFlippedLocal = (cornersBefore === 2);
-           else if (cornersBefore === 2) isFlippedLocal = !isFlippedLocal; 
+        worldCursor.add(dummy);
+        worldCursor.updateMatrixWorld();
 
-           if (cab.type === 'naroznik') {
-              const sign = cab.cornerSide === 'prawy' ? 1 : -1;
-              const flipMult = isFlippedLocal ? -1 : 1;
+        const worldPos = new THREE.Vector3();
+        dummy.getWorldPosition(worldPos);
+        const worldQuat = new THREE.Quaternion();
+        dummy.getWorldQuaternion(worldQuat);
+        const euler = new THREE.Euler().setFromQuaternion(worldQuat, 'YXZ');
 
-              // Blat Główny Narożnika
-              const w1 = cab.w + (worktopDepth - 0.53);
-              const cx1 = sign * (worktopDepth - 0.53) / 2;
-              const cz1 = 0.28 - hwd;
+        let isInside = true;
+        let polyNodes = [];
 
-              // POPRAWKA: Dodajemy stały, 2-centymetrowy narzut bezpieczeństwa (0.02) na KAŻDĄ 
-              // krawędź głównego blatu. Dzięki temu wyprzedzi on fizyczny korpus narożnika 
-              // i ominie "martwą strefę" tolerancji rysowania ścian.
-              const right1 = cx1 + w1/2 + 0.02;
-              const left1 = cx1 - w1/2 - 0.02;
-              const front1 = cz1 + hwd + 0.02;
-              const back1 = cz1 - hwd - 0.02;
-
-              checkPoints.push(
-                 new THREE.Vector3(flipMult * right1, 0, flipMult * front1),
-                 new THREE.Vector3(flipMult * right1, 0, flipMult * back1),
-                 new THREE.Vector3(flipMult * left1, 0, flipMult * front1),
-                 new THREE.Vector3(flipMult * left1, 0, flipMult * back1)
-              );
-
-              // Blat Boczny Narożnika
-              const w2 = (cab.w2 || 0.9) - 0.53;
-              const cx2 = sign * (cab.w/2 - 0.53 + hwd);
-              const cz2 = (cab.w2 || 0.9)/2 + 0.015;
-
-              // POPRAWKA: Podnosimy narzut również dla bocznego ramienia na równe 0.02 dla pewności.
-              const right2 = cx2 + hwd + 0.02;
-              const left2 = cx2 - hwd - 0.02;
-              const front2 = cz2 + w2/2 + 0.02; 
-              const back2 = cz2 - w2/2 - 0.02;
-
-              checkPoints.push(
-                 new THREE.Vector3(flipMult * right2, 0, flipMult * front2),
-                 new THREE.Vector3(flipMult * right2, 0, flipMult * back2),
-                 new THREE.Vector3(flipMult * left2, 0, flipMult * front2),
-                 new THREE.Vector3(flipMult * left2, 0, flipMult * back2)
-              );
-           } else {
-              const wtCenterZ = (cab.d / 2 + 0.03) - hwd;
-              const localZ = isFlippedLocal ? -wtCenterZ : wtCenterZ;
-              checkPoints.push(
-                 new THREE.Vector3(hw, 0, localZ + hwd), new THREE.Vector3(-hw, 0, localZ + hwd),
-                 new THREE.Vector3(hw, 0, localZ - hwd), new THREE.Vector3(-hw, 0, localZ - hwd)
-              );
-           }
-        }
-
-        // NAPRAWA: Zmienna polyNodes jest już zadeklarowana wyżej, więc usuwamy 'let'
-        const isRoomClosed = wallNodes.length > 2 && wallNodes[0].x === wallNodes[wallNodes.length-1].x && wallNodes[0].z === wallNodes[wallNodes.length-1].z;
-        
-        if (isRoomClosed) {
-          polyNodes = wallNodes.slice(0, -1);
-        } else if (wallNodes.length > 1) {
-          const n = wallNodes.length;
-          const isCW = kitchenStart ? kitchenStart.isClockwise : true;
-
-          const fA = wallNodes[0], fB = wallNodes[1];
-          const fLen = Math.sqrt((fB.x-fA.x)**2 + (fB.z-fA.z)**2) || 1;
-
-          const lA = wallNodes[n-2], lB = wallNodes[n-1];
-          const lLen = Math.sqrt((lB.x-lA.x)**2 + (lB.z-lA.z)**2) || 1;
-
-          // NAPRAWA OSTATECZNA:
-          // Zamiast przedłużać wirtualne ściany w nieskończoność (co maskowało błąd wystającego blatu narożnika),
-          // tworzymy wielokąt obcinający się DOKŁADNIE na końcach narysowanych przez Ciebie ścian!
-          for (let i = 0; i < n; i++) polyNodes.push(wallNodes[i]);
-
-          // Wektory skierowane 10 metrów w głąb kuchni, tworzące bezpieczny schron dla frontów
-          const inDxL = isCW ? -(lB.z-lA.z)/lLen : (lB.z-lA.z)/lLen;
-          const inDzL = isCW ? (lB.x-lA.x)/lLen : -(lB.x-lA.x)/lLen;
-          const inDxF = isCW ? -(fB.z-fA.z)/fLen : (fB.z-fA.z)/fLen;
-          const inDzF = isCW ? (fB.x-fA.x)/fLen : -(fB.x-fA.x)/fLen;
-
-          // Domknięcie pokoju idealnie pod kątem prostym od ostatnich punktów narysowanej ściany
-          polyNodes.push({ x: lB.x + inDxL * 10, z: lB.z + inDzL * 10 });
-          polyNodes.push({ x: fA.x + inDxF * 10, z: fA.z + inDzF * 10 });
-        } else {
-          polyNodes = [...wallNodes];
-        }
-
-        for (let pt of checkPoints) {
-          const wpt = pt.clone();
-          dummy.localToWorld(wpt);
-          const px = wpt.x; const pz = wpt.z;
-          let insidePt = false;
-          let isCloseToEdge = false; 
-
-          for (let i = 0, j = polyNodes.length - 1; i < polyNodes.length; j = i++) {
-            let xi = polyNodes[i].x, zi = polyNodes[i].z;
-            let xj = polyNodes[j].x, zj = polyNodes[j].z;
-            
-            let intersect = ((zi > pz) !== (zj > pz)) && (px < (xj - xi) * (pz - zi) / (zj - zi) + xi);
-            if (intersect) insidePt = !insidePt;
-
-            // TOLERANCJA BŁĘDÓW STYKU 5 mm:
-            // Szafki równe ze ścianą mają teraz bezpieczny bufor przed fałszywym alarmem!
-            let l2 = (xj - xi)**2 + (zj - zi)**2;
-            if (l2 > 0) {
-                let t = ((px - xi)*(xj - xi) + (pz - zi)*(zj - zi)) / l2;
-                t = Math.max(0, Math.min(1, t));
-                let projX = xi + t * (xj - xi);
-                let projZ = zi + t * (zj - zi);
-                if (Math.sqrt((px - projX)**2 + (pz - projZ)**2) <= 0.005) {
-                    isCloseToEdge = true; 
-                }
-            }
+        if (wallNodes && wallNodes.length >= 3) {
+          const cab = runCabinets.find(c => c.id === item.id); 
+          const hw = cab.w / 2;
+          const hd = cab.d / 2;
+          const checkPoints = [
+            new THREE.Vector3(0, 0, 0), new THREE.Vector3(hw, 0, hd), new THREE.Vector3(-hw, 0, hd),
+            new THREE.Vector3(hw, 0, -hd), new THREE.Vector3(-hw, 0, -hd), new THREE.Vector3(hw, 0, 0),
+            new THREE.Vector3(-hw, 0, 0), new THREE.Vector3(0, 0, hd), new THREE.Vector3(0, 0, -hd)
+          ];
+          
+          if (cab.type === 'naroznik') {
+             const sign = cab.cornerSide === 'prawy' ? 1 : -1;
+             checkPoints.push(new THREE.Vector3(sign * (hw - (cab.d2 || 0.5)), 0, (cab.w2 || 0.9) - hd));
+             checkPoints.push(new THREE.Vector3(sign * hw, 0, (cab.w2 || 0.9) - hd));
           }
-          if (!insidePt && !isCloseToEdge) { isInside = false; break; } 
+
+          if (showWorktopGlobal && cab.hasWorktop && cab.type !== 'puste') {
+             const hwd = worktopDepth / 2;
+             let isFlippedLocal = cab.reverseFront || false;
+             const cornersBefore = runCabinets.slice(0, index).filter(c => c.type === 'naroznik').length;
+             if (cab.type === 'naroznik') isFlippedLocal = (cornersBefore === 2);
+             else if (cornersBefore === 2) isFlippedLocal = !isFlippedLocal; 
+
+             if (cab.type === 'naroznik') {
+                const sign = cab.cornerSide === 'prawy' ? 1 : -1;
+                const flipMult = isFlippedLocal ? -1 : 1;
+
+                const w1 = cab.w + (worktopDepth - 0.53);
+                const cx1 = sign * (worktopDepth - 0.53) / 2;
+                const cz1 = 0.28 - hwd;
+
+                const right1 = cx1 + w1/2 + 0.02;
+                const left1 = cx1 - w1/2 - 0.02;
+                const front1 = cz1 + hwd + 0.02;
+                const back1 = cz1 - hwd - 0.02;
+
+                checkPoints.push(
+                   new THREE.Vector3(flipMult * right1, 0, flipMult * front1),
+                   new THREE.Vector3(flipMult * right1, 0, flipMult * back1),
+                   new THREE.Vector3(flipMult * left1, 0, flipMult * front1),
+                   new THREE.Vector3(flipMult * left1, 0, flipMult * back1)
+                );
+
+                const w2 = (cab.w2 || 0.9) - 0.53;
+                const cx2 = sign * (cab.w/2 - 0.53 + hwd);
+                const cz2 = (cab.w2 || 0.9)/2 + 0.015;
+
+                const right2 = cx2 + hwd + 0.02;
+                const left2 = cx2 - hwd - 0.02;
+                const front2 = cz2 + w2/2 + 0.02; 
+                const back2 = cz2 - w2/2 - 0.02;
+
+                checkPoints.push(
+                   new THREE.Vector3(flipMult * right2, 0, flipMult * front2),
+                   new THREE.Vector3(flipMult * right2, 0, flipMult * back2),
+                   new THREE.Vector3(flipMult * left2, 0, flipMult * front2),
+                   new THREE.Vector3(flipMult * left2, 0, flipMult * back2)
+                );
+             } else {
+                const wtCenterZ = (cab.d / 2 + 0.03) - hwd;
+                const localZ = isFlippedLocal ? -wtCenterZ : wtCenterZ;
+                checkPoints.push(
+                   new THREE.Vector3(hw, 0, localZ + hwd), new THREE.Vector3(-hw, 0, localZ + hwd),
+                   new THREE.Vector3(hw, 0, localZ - hwd), new THREE.Vector3(-hw, 0, localZ - hwd)
+                );
+             }
+          }
+
+          const isRoomClosed = wallNodes.length > 2 && wallNodes[0].x === wallNodes[wallNodes.length-1].x && wallNodes[0].z === wallNodes[wallNodes.length-1].z;
+          
+          if (isRoomClosed) {
+            polyNodes = wallNodes.slice(0, -1);
+          } else if (wallNodes.length > 1) {
+            const n = wallNodes.length;
+            const isCW = runStart ? runStart.isClockwise : true;
+
+            const fA = wallNodes[0], fB = wallNodes[1];
+            const fLen = Math.sqrt((fB.x-fA.x)**2 + (fB.z-fA.z)**2) || 1;
+
+            const lA = wallNodes[n-2], lB = wallNodes[n-1];
+            const lLen = Math.sqrt((lB.x-lA.x)**2 + (lB.z-lA.z)**2) || 1;
+
+            for (let i = 0; i < n; i++) polyNodes.push(wallNodes[i]);
+
+            const inDxL = isCW ? -(lB.z-lA.z)/lLen : (lB.z-lA.z)/lLen;
+            const inDzL = isCW ? (lB.x-lA.x)/lLen : -(lB.x-lA.x)/lLen;
+            const inDxF = isCW ? -(fB.z-fA.z)/fLen : (fB.z-fA.z)/fLen;
+            const inDzF = isCW ? (fB.x-fA.x)/fLen : -(fB.x-fA.x)/fLen;
+
+            polyNodes.push({ x: lB.x + inDxL * 10, z: lB.z + inDzL * 10 });
+            polyNodes.push({ x: fA.x + inDxF * 10, z: fA.z + inDzF * 10 });
+          } else {
+            polyNodes = [...wallNodes];
+          }
+
+          for (let pt of checkPoints) {
+            const wpt = pt.clone();
+            dummy.localToWorld(wpt);
+            const px = wpt.x; const pz = wpt.z;
+            let insidePt = false;
+            let isCloseToEdge = false; 
+
+            for (let i = 0, j = polyNodes.length - 1; i < polyNodes.length; j = i++) {
+              let xi = polyNodes[i].x, zi = polyNodes[i].z;
+              let xj = polyNodes[j].x, zj = polyNodes[j].z;
+              
+              let intersect = ((zi > pz) !== (zj > pz)) && (px < (xj - xi) * (pz - zi) / (zj - zi) + xi);
+              if (intersect) insidePt = !insidePt;
+
+              let l2 = (xj - xi)**2 + (zj - zi)**2;
+              if (l2 > 0) {
+                  let t = ((px - xi)*(xj - xi) + (pz - zi)*(zj - zi)) / l2;
+                  t = Math.max(0, Math.min(1, t));
+                  let projX = xi + t * (xj - xi);
+                  let projZ = zi + t * (zj - zi);
+                  if (Math.sqrt((px - projX)**2 + (pz - projZ)**2) <= 0.005) {
+                      isCloseToEdge = true; 
+                  }
+              }
+            }
+            if (!insidePt && !isCloseToEdge) { isInside = false; break; } 
+          }
         }
-      }
 
-      worldCursor.remove(dummy);
+        worldCursor.remove(dummy);
 
-      finalResult.push({
-        id: item.id,
-        pos: [worldPos.x, worldPos.y, worldPos.z],
-        rot: euler.y,
-        dist: item.dist,
-        crossDist: item.crossDist,
-        isOutOfBounds: !isInside,
-        polyNodes: polyNodes // Wyrzucamy bezpieczny wielokąt do shadera
+        finalResult.push({
+          id: item.id,
+          pos: [worldPos.x, worldPos.y, worldPos.z],
+          rot: euler.y,
+          dist: item.dist,
+          crossDist: item.crossDist,
+          isOutOfBounds: !isInside,
+          polyNodes: polyNodes 
+        });
       });
-    });
 
-    return finalResult;
-  }, [cabinets, kitchenStart, kitchenFlip, worktopDepth, wallNodes, showWorktopGlobal]); // NAPRAWA: Dodano showWorktopGlobal do zależności!
+      return finalResult;
+    });
+  }, [runs, worktopDepth, wallNodes, showWorktopGlobal]);
 
   // ŚLEDZENIE ŚRODKA SCENY PRZEZ KAMERĘ
   const sceneCenter = useMemo(() => {
-    if (layout.length === 0) return [0, 0.8, 0];
-    let minX = layout[0].pos[0], maxX = layout[0].pos[0];
-    let minZ = layout[0].pos[2], maxZ = layout[0].pos[2];
-    layout.forEach(l => {
+    const flatLayout = allLayouts.flat();
+    if (flatLayout.length === 0) return [0, 0.8, 0];
+    let minX = flatLayout[0].pos[0], maxX = flatLayout[0].pos[0];
+    let minZ = flatLayout[0].pos[2], maxZ = flatLayout[0].pos[2];
+    flatLayout.forEach(l => {
       minX = Math.min(minX, l.pos[0]); maxX = Math.max(maxX, l.pos[0]);
       minZ = Math.min(minZ, l.pos[2]); maxZ = Math.max(maxZ, l.pos[2]);
     });
     return [(minX + maxX) / 2, 0.8, (minZ + maxZ) / 2];
-  }, [layout]);
+  }, [allLayouts]);
 
 // --- NOWOŚĆ: INTELIGENTNE ZAMYKANIE POKOJU (OPTYMALIZACJA ŚCIAN) ---
   const zamykajZOptymalizacja = () => {
@@ -1497,33 +1504,41 @@ export default function App() {
                   );
                 })()}
                 
-                {kitchenStart && (() => {
-                  const inX = kitchenStart.inDx; 
-                  const inZ = kitchenStart.inDz; 
+                {/* NOWOŚĆ: Rysowanie WSZYSTKICH startów rzędów na mapie */}
+                {runs.map((run, rIdx) => {
+                  if (!run.start) return null;
+                  const inX = run.start.inDx; 
+                  const inZ = run.start.inDz; 
                   
-                  let walkMult = kitchenStart.isClockwise ? 1 : -1;
-                  if (kitchenFlip) walkMult *= -1;
+                  let walkMult = run.start.isClockwise ? 1 : -1;
+                  if (run.flip) walkMult *= -1;
                   
-                  const dirX = walkMult * kitchenStart.inDz;
-                  const dirZ = walkMult * -kitchenStart.inDx;
+                  const dirX = walkMult * run.start.inDz;
+                  const dirZ = walkMult * -run.start.inDx;
+                  
+                  const isActive = rIdx === activeRunIdx;
+                  const dotColor = run.color;
                   
                   return (
-                    <g transform={`translate(${kitchenStart.x * 120 + 300}, ${kitchenStart.z * 120 + 300})`}>
-                      {/* Elegancka strzałka wskazująca kierunek budowania szafek */}
-                      <line x1="0" y1="0" x2={dirX * 50} y2={dirZ * 50} stroke="#2e7d32" strokeWidth="5" strokeLinecap="round" />
-                      <g transform={`translate(${dirX * 56}, ${dirZ * 56}) rotate(${Math.atan2(dirZ, dirX) * (180 / Math.PI)})`}>
-                        <polygon points="-8,-8 10,0 -8,8" fill="#2e7d32" stroke="#2e7d32" strokeWidth="2" strokeLinejoin="round" />
+                    <g key={run.id} transform={`translate(${run.start.x * 120 + 300}, ${run.start.z * 120 + 300})`}>
+                      {/* POPRAWKA: Rysujemy strzałki zawsze, żeby było widać kierunek innych rzędów! 
+                          Dla nieaktywnych dajemy lekką przezroczystość (opacity: 0.5) żeby nie krzyczały na mapie */}
+                      <g opacity={isActive ? 1 : 0.5}>
+                        <line x1="0" y1="0" x2={dirX * 50} y2={dirZ * 50} stroke={dotColor} strokeWidth="5" strokeLinecap="round" />
+                        <g transform={`translate(${dirX * 56}, ${dirZ * 56}) rotate(${Math.atan2(dirZ, dirX) * (180 / Math.PI)})`}>
+                          <polygon points="-8,-8 10,0 -8,8" fill={dotColor} stroke={dotColor} strokeWidth="2" strokeLinejoin="round" />
+                        </g>
                       </g>
                       
-                      <line x1="0" y1="0" x2={inX * 30} y2={inZ * 30} stroke="#f39c12" strokeWidth="3" strokeDasharray="4,4" />
-                      <circle cx="0" cy="0" r="10" fill="#2e7d32" />
-                      <circle cx="0" cy="0" r="16" fill="none" stroke="#2e7d32" strokeWidth="2" opacity="0.5" />
+                      {isActive && <line x1="0" y1="0" x2={inX * 30} y2={inZ * 30} stroke="#f39c12" strokeWidth="3" strokeDasharray="4,4" />}
+                      <circle cx="0" cy="0" r={isActive ? 10 : 7} fill={dotColor} opacity={isActive ? 1 : 0.6} />
+                      {isActive && <circle cx="0" cy="0" r="16" fill="none" stroke={dotColor} strokeWidth="2" opacity="0.5" />}
                       
-                      <rect x="-40" y="-35" width="80" height="20" fill="white" rx="4" opacity="0.9" stroke="#2e7d32" strokeWidth="1" />
-                      <text x="0" y="-21" textAnchor="middle" alignmentBaseline="middle" fontSize="11" fontWeight="bold" fill="#2e7d32">Start Kuchni</text>
+                      <rect x="-40" y="-35" width="80" height="20" fill="white" rx="4" opacity={isActive ? 0.9 : 0.6} stroke={dotColor} strokeWidth="1" />
+                      <text x="0" y="-21" textAnchor="middle" alignmentBaseline="middle" fontSize="11" fontWeight="bold" fill={dotColor}>{run.name}</text>
                     </g>
                   );
-                })()}
+                })}
               </svg>
 
             </div>
@@ -1616,10 +1631,15 @@ export default function App() {
             {showStartModal && (
               <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
                 <div style={{ backgroundColor: 'white', padding: '40px', borderRadius: '16px', textAlign: 'center', boxShadow: '0 10px 30px rgba(0,0,0,0.3)', maxWidth: '450px' }}>
-                  <div style={{ fontSize: '40px', marginBottom: '10px' }}>🎉</div>
-                  <h2 style={{ color: '#2c3e50', margin: '0 0 15px 0' }}>Pokój utworzony!</h2>
+                  <div style={{ fontSize: '40px', marginBottom: '10px' }}>{runs.length > 1 ? '➕' : '🎉'}</div>
+                  <h2 style={{ color: '#2c3e50', margin: '0 0 15px 0' }}>
+                    {runs.length > 1 ? 'Kolejny rząd mebli!' : 'Pokój utworzony!'}
+                  </h2>
                   <p style={{ fontSize: '16px', color: '#34495e', lineHeight: '1.6', marginBottom: '25px' }}>
-                    Świetnie! Teraz najedź myszką na narysowaną ścianę i <b>kliknij</b>, aby wskazać miejsce, od którego <b>zaczną się dodawać szafki</b>.
+                    {runs.length > 1 
+                      ? <>Wybierz na narysowanej ścianie punkt startowy dla <b>nowego rzędu szafek</b>. Zostanie on oznaczony nowym kolorem.</> 
+                      : <>Świetnie! Teraz najedź myszką na narysowaną ścianę i <b>kliknij</b>, aby wskazać miejsce, od którego <b>zaczną się dodawać szafki</b>.</>
+                    }
                   </p>
                   <button onClick={() => setShowStartModal(false)} style={{ padding: '12px 35px', backgroundColor: '#40c057', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '16px', fontWeight: 'bold', boxShadow: '0 4px 15px rgba(64, 192, 87, 0.3)' }}>
                     Zrozumiałem
@@ -1682,8 +1702,50 @@ export default function App() {
                 </div>
               </div>
 
-              <h2 style={{ fontSize: '18px', marginTop: '30px', marginBottom: '15px', color: '#2c3e50', borderBottom: '2px solid #e9ecef', paddingBottom: '8px' }}>
-                Wybierz / Dodaj szafkę
+              {/* NOWOŚĆ: ZAKŁADKI RZĘDÓW (W lewym panelu nad szafkami) */}
+              <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '10px', marginBottom: '20px', marginTop: '30px', borderBottom: '2px solid #e9ecef', alignItems: 'center' }}>
+                {runs.map((run, i) => (
+                  <button key={run.id} onClick={() => { setActiveRunIdx(i); setActiveIdx(0); }} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 12px', backgroundColor: i === activeRunIdx ? run.color : '#e9ecef', color: i === activeRunIdx ? '#fff' : '#333', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', whiteSpace: 'nowrap', transition: '0.2s', boxShadow: i === activeRunIdx ? '0 4px 10px rgba(0,0,0,0.15)' : 'none' }}>
+                    <span>{run.name} {run.start ? '✔️' : '⚠️'}</span>
+                    
+                    {/* PRZYCISK USUWANIA RZĘDU (Tylko dla aktywnego i gdy jest ich więcej niż 1) */}
+                    {i === activeRunIdx && runs.length > 1 && (
+                      <span 
+                        onClick={(e) => {
+                          e.stopPropagation(); // Zapobiega kliknięciu w samą zakładkę
+                          if (window.confirm('Czy na pewno chcesz usunąć ten rząd szafek? Ta operacja jest nieodwracalna.')) {
+                            const newRuns = runs.filter((_, idx) => idx !== i);
+                            setRuns(newRuns);
+                            setActiveRunIdx(Math.max(0, i - 1)); // Cofa indeks na poprzedni bezpieczny rząd
+                            setActiveIdx(0);
+                          }
+                        }}
+                        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '20px', height: '20px', backgroundColor: 'rgba(255, 255, 255, 0.3)', borderRadius: '50%', color: '#fff', fontSize: '12px', marginLeft: '2px' }}
+                        title="Usuń ten rząd"
+                      >
+                        ✕
+                      </span>
+                    )}
+                  </button>
+                ))}
+                <button onClick={() => {
+                  // Inteligentne numerowanie: szuka najwyższego istniejącego numeru i dodaje 1
+                  const nextNum = Math.max(0, ...runs.map(r => parseInt(r.name.replace('Rząd ', '')) || 0)) + 1;
+                  const newColor = PALETA_RZEDOW[(nextNum - 1) % PALETA_RZEDOW.length];
+                  
+                  const newRun = { id: `rzad-${Date.now()}`, name: `Rząd ${nextNum}`, color: newColor, start: null, flip: false, cabinets: [{ ...DOMYSLNA_SZAFKA, id: Date.now() + 1 }] };
+                  setRuns([...runs, newRun]);
+                  setActiveRunIdx(runs.length);
+                  setActiveIdx(0);
+                  setCurrentStep(1); 
+                  setShowStartModal(true);
+                }} style={{ padding: '8px 12px', backgroundColor: '#fff', color: '#2c3e50', border: '2px dashed #bdc3c7', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                  + Nowy rząd
+                </button>
+              </div>
+
+              <h2 style={{ fontSize: '18px', marginBottom: '15px', color: '#2c3e50' }}>
+                Wybierz / Dodaj szafkę ({activeRun.name})
               </h2>
 
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '30px', paddingBottom: '10px' }}>
@@ -1705,12 +1767,18 @@ export default function App() {
               <div style={{ marginBottom: '20px' }}>
                 <label style={{ fontSize: '13px', fontWeight: 'bold', display: 'block', marginBottom: '10px' }}>Wybierz Typ:</label>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '10px' }}>
-                  {['drzwi', 'szuflady', 'hybryda', 'puste', 'naroznik'].map(t => (
+                  {/* NOWOŚĆ: Dodano 'inne' do listy */}
+                  {['drzwi', 'szuflady', 'hybryda', 'puste', 'naroznik', 'inne'].map(t => (
                     <button key={t} onClick={() => {
+                      if (t === 'inne') {
+                        setShowOtherModal(true);
+                        return; // Przycisk INNE nie nadpisuje od razu szafki, tylko otwiera okno!
+                      }
+                      
                       if (t === 'naroznik' && activeCab.type !== 'naroznik') updateActiveCab({ type: t, w: 1.0, w2: 1.0 });
                       else if (t !== 'naroznik' && activeCab.type === 'naroznik') updateActiveCab({ type: t, w: 0.6 });
                       else updateActiveCab({ type: t });
-                    }} style={{ width: 'calc(50% - 4px)', padding: '15px 5px', backgroundColor: activeCab.type === t ? '#eef2f3' : '#fff', border: `2px solid ${activeCab.type === t ? '#40c057' : '#ddd'}`, borderRadius: '10px', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                    }} style={{ width: 'calc(50% - 4px)', padding: '15px 5px', backgroundColor: (activeCab.type === t && t !== 'inne') ? '#eef2f3' : '#fff', border: `2px solid ${(activeCab.type === t && t !== 'inne') ? '#40c057' : '#ddd'}`, borderRadius: '10px', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', transition: '0.2s' }}>
                       <MiniaturaSzafki cab={{...activeCab, type: t, w: 0.6, h: 0.82}} size={45} showHandles={true} />
                       <div style={{ fontSize: '10px', marginTop: '8px', textTransform: 'uppercase', fontWeight: 'bold' }}>{t}</div>
                     </button>
@@ -1771,7 +1839,7 @@ export default function App() {
                         </div>
                         
                         <div style={{ marginBottom: '20px', padding: '10px', backgroundColor: '#f8f9fa', border: '1px solid #e9ecef', borderRadius: '8px' }}>
-                          <label style={{ fontSize: '12px', fontWeight: 'bold' }}>Kierunek skrętu ciągu szafek:</label>
+                          <label style={{ fontSize: '12px', fontWeight: 'bold' }}>Kierunek skrętu rzędu szafek:</label>
                           <select value={activeCab.cornerSide} onChange={(e) => updateActiveCab({cornerSide: e.target.value})} style={{ width: '100%', padding: '6px', marginTop: '8px', borderRadius: '4px', border: '1px solid #ccc' }}>
                             <option value="prawy">Prawy (skręca w prawo)</option>
                             <option value="lewy">Lewy (skręca w lewo)</option>
@@ -1855,307 +1923,306 @@ export default function App() {
                 <Suspense fallback={null}>
                   {/* TUTAJ WSTAWIAMY NASZE ŚCIANY */}
                   <Walls3D nodes={wallNodes} sceneCenter={sceneCenter} />
-                  {layout.map((item, index) => {
-              let cab = cabinets[index];
-              
-              // Rozpoznajemy, czy układ buduje się w trybie odbicia lustrzanego
-              const isMirrored = kitchenStart ? (!kitchenStart.isClockwise !== kitchenFlip) : false;
-              
-              // ZAMIAST obracania narożników o 180 stopni, system sam wymienia ich fizyczny model na lewy/prawy
-              if (cab.type === 'naroznik' && isMirrored) {
-                cab = { ...cab, cornerSide: cab.cornerSide === 'prawy' ? 'lewy' : 'prawy' };
-              }
-
-              const f = DEKORY[cab.useCustomColors ? cab.fDecor : globalF];
-              const b = DEKORY[cab.useCustomColors ? cab.bDecor : globalB];
-              
-              const wtCenterZ = (cab.d / 2 + 0.03) - (worktopDepth / 2);
-              
-              // --- LOGIKA OBROTU ---
-              let isFlipped = cab.reverseFront || false;
-              const cornersBefore = cabinets.slice(0, index).filter(c => c.type === 'naroznik').length;
-              
-              if (cab.type === 'naroznik') {
-                isFlipped = (cornersBefore === 2); // Pozwalamy TRZECIEMU narożnikowi obrócić się do środka
-              } else if (cornersBefore === 2) {
-                isFlipped = !isFlipped; 
-              }
-
-              return (
-                <group key={cab.id} position={item.pos} rotation={[0, item.rot, 0]}>
-                  {cab.type === 'naroznik' ? (
-                     <group rotation={[0, isFlipped ? Math.PI : 0, 0]}>
-                      <SzafkaNarozna cab={cab} dekorFront={f} dekorBody={b} />
-                     </group>
-                  ) : (
-                     <group rotation={[0, isFlipped ? Math.PI : 0, 0]}>
-                       <Szafka 
-                         width={cab.w} height={cab.h} depth={cab.d} dekorFront={f} dekorBody={b} 
-                         type={cab.type} baseType={cab.baseType} doorCount={cab.doorsC} 
-                         doorDirection={cab.doorDirection} drawersCount={cab.drawersC} 
-                         shelvesCount={cab.shelvesC} drawerRatios={cab.ratios} 
-                         hybridSplit={cab.split} hybridOrder={cab.order} 
-                       />
-                     </group>
-                  )}
                   
-                  {index === activeIdx && (
-                    <CabinetHighlight 
-                      key={highlightKey} 
-                      cab={cab} 
-                      isFlipped={isFlipped}
-                      showWorktop={showWorktopGlobal && cab.hasWorktop && cab.type !== 'puste'}
-                      worktopDepth={worktopDepth}
-                      nextIsFlipped={(() => {
-                         const nextCab = cabinets[index + 1];
-                         let nif = (nextCab && nextCab.type !== 'naroznik') ? (nextCab.reverseFront || false) : false;
-                         const nextCornersBefore = cabinets.slice(0, index + 1).filter(c => c.type === 'naroznik').length;
-                         if (nextCornersBefore === 2 && nextCab && nextCab.type !== 'naroznik') nif = !nif;
-                         return nif;
-                      })()}
-                    />
-                  )}
+                  {runs.map((run, runIndex) => {
+                    const currentLayout = allLayouts[runIndex] || [];
+                    const runCabinets = run.cabinets;
+                    const isMirrored = run.start ? (!run.start.isClockwise !== run.flip) : false;
 
-                  {/* NOWOŚĆ: OSTRZEŻENIE O BŁĘDZIE - RYSOWANIE Z BEZPIECZNĄ STREFĄ */}
-                  {item.isOutOfBounds && (
-                    <CabinetError 
-                      cab={cab} 
-                      isFlipped={isFlipped} 
-                      polyNodes={item.polyNodes} 
-                      sceneCenter={sceneCenter}
-                      showWorktop={showWorktopGlobal && cab.hasWorktop && cab.type !== 'puste'}
-                      worktopDepth={worktopDepth}
-                      nextIsFlipped={(() => {
-                         const nextCab = cabinets[index + 1];
-                         let nif = (nextCab && nextCab.type !== 'naroznik') ? (nextCab.reverseFront || false) : false;
-                         const nextCornersBefore = cabinets.slice(0, index + 1).filter(c => c.type === 'naroznik').length;
-                         if (nextCornersBefore === 2 && nextCab && nextCab.type !== 'naroznik') nif = !nif;
-                         return nif;
-                      })()}
-                    />
-                  )}
-
-                  {showWorktopGlobal && cab.hasWorktop && cab.type !== 'puste' && (() => {
-                     const nextCab = cabinets[index + 1];
-                     let nextIsFlipped = (nextCab && nextCab.type !== 'naroznik') ? (nextCab.reverseFront || false) : false;
-                     const nextCornersBefore = cabinets.slice(0, index + 1).filter(c => c.type === 'naroznik').length;
-                     if (nextCornersBefore === 2 && nextCab && nextCab.type !== 'naroznik') {
-                       nextIsFlipped = !nextIsFlipped;
-                     }
-                     return cab.type === 'naroznik' ? (
-                       <group position={[0, cab.h + 0.119, 0]} rotation={[0, isFlipped ? Math.PI : 0, 0]}>
-                         {/* Blat GŁÓWNY narożnika */}
-                         <mesh position={[(cab.cornerSide==='prawy'?1:-1) * (worktopDepth - 0.5 - 0.03) / 2, 0, (0.5 / 2 + 0.03) - (worktopDepth / 2)]}>
-                           <boxGeometry args={[cab.w + (worktopDepth - 0.5 - 0.03) + 0.001, 0.038, worktopDepth]} />
-                           <PłytaMaterial 
-                             dekor={DEKORY[worktopDecor]} 
-                             w={cab.w + (worktopDepth - 0.5 - 0.03)} 
-                             h={worktopDepth} 
-                             rotate 
-                             offsetX={isFlipped ? item.dist + cab.w + (cab.cornerSide === 'lewy' ? (worktopDepth - 0.5 - 0.03) : 0) - (cabinets[index - 1] ? cabinets[index - 1].w : 0.6) : item.dist} 
-                             offsetY={isFlipped ? -(item.crossDist + (wtCenterZ * 2)) : item.crossDist} 
-                           />
-                         </mesh>
-                         {/* Blat BOCZNY narożnika */}
-                         <mesh 
-                           position={[(cab.cornerSide==='prawy'?1:-1) * (cab.w/2 - 0.5 - 0.03 + worktopDepth/2), 0, (cab.w2||0.9)/2 + 0.015]}
-                           rotation={[0, (cab.cornerSide === 'prawy' ? -Math.PI / 2 : Math.PI / 2) + (nextIsFlipped ? Math.PI : 0), 0]}
-                         >
-                           <boxGeometry args={[(cab.w2||0.9) - 0.5 - 0.03 + 0.001, 0.038, worktopDepth]} />
-                           <PłytaMaterial 
-                             dekor={DEKORY[worktopDecor]} 
-                             w={(cab.w2||0.9) - 0.5 - 0.03} 
-                             h={worktopDepth} 
-                             rotate 
-                             offsetX={nextIsFlipped ? -(item.dist + cab.w + 0.03) : (item.dist + cab.w + 0.03)} 
-                             offsetY={item.crossDist + (cab.cornerSide === 'prawy' ? 0.07 : -0.07) + (nextIsFlipped ? (wtCenterZ * 2) : 0)} 
-                           />
-                         </mesh>
-                       </group>
-                     ) : (
-                       <mesh position={[0, cab.h + 0.119, isFlipped ? -wtCenterZ : wtCenterZ]}>
-                         <boxGeometry args={[cab.w + 0.001, 0.038, worktopDepth]} />
-                         <PłytaMaterial 
-                           dekor={DEKORY[worktopDecor]} 
-                           w={cab.w} 
-                           h={worktopDepth} 
-                           rotate 
-                           offsetX={isFlipped ? -item.dist : item.dist} 
-                           offsetY={item.crossDist + (isFlipped ? (wtCenterZ * 2) : 0)} 
-                         />
-                       </mesh>
-                     );
-                  })()}
-                </group>
-              );
-            })}
-
-                  {/* NOWOŚĆ: GRUPOWANIE NAPISÓW OSTRZEGAWCZYCH (JEDEN NAD KILKOMA SZAFKAMI) */}
-                  {(() => {
-                    const errorGroups = [];
-                    let currentGroup = [];
-                    
-                    layout.forEach((item, index) => {
-                      let showText = false;
-                      
-                      // KROK 1: Czy system zasygnalizował ogólne ryzyko błędu?
-                      if (item.isOutOfBounds) {
-                        const cab = cabinets.find(c => c.id === item.id);
-                        if (cab && item.polyNodes && item.polyNodes.length >= 3) {
-                          // KROK 2: Mechanizm Napisu (Symulacja Shadera 1:1)
-                          const hw = cab.w / 2; const hd = cab.d / 2;
-                          const hwd = worktopDepth / 2;
+                    return (
+                      <group key={`run-${run.id}`}>
+                        {currentLayout.map((item, index) => {
+                          let cab = runCabinets[index];
                           
-                          // Wyznaczanie obrotu szafki przeniesione na górę
-                          let isFlippedLocal = cab.reverseFront || false;
-                          const cornersBefore = cabinets.slice(0, index).filter(c => c.type === 'naroznik').length;
-                          if (cab.type === 'naroznik') isFlippedLocal = (cornersBefore === 2);
-                          else if (cornersBefore === 2) isFlippedLocal = !isFlippedLocal; 
-                          const flipMult = isFlippedLocal ? -1 : 1;
+                          if (cab.type === 'naroznik' && isMirrored) {
+                            cab = { ...cab, cornerSide: cab.cornerSide === 'prawy' ? 'lewy' : 'prawy' };
+                          }
 
-                          // Aplikujemy `flipMult` na główny korpus
-                          const strictPoints = [
-                            new THREE.Vector3(0, 0, 0), 
-                            new THREE.Vector3(flipMult * hw, 0, flipMult * hd), 
-                            new THREE.Vector3(flipMult * -hw, 0, flipMult * hd),
-                            new THREE.Vector3(flipMult * hw, 0, flipMult * -hd), 
-                            new THREE.Vector3(flipMult * -hw, 0, flipMult * -hd)
-                          ];
+                          const f = DEKORY[cab.useCustomColors ? cab.fDecor : globalF];
+                          const b = DEKORY[cab.useCustomColors ? cab.bDecor : globalB];
+                          const wtCenterZ = (cab.d / 2 + 0.03) - (worktopDepth / 2);
                           
+                          let isFlipped = cab.reverseFront || false;
+                          const cornersBefore = runCabinets.slice(0, index).filter(c => c.type === 'naroznik').length;
                           if (cab.type === 'naroznik') {
-                            const sign = cab.cornerSide === 'prawy' ? 1 : -1;
-                            // Aplikujemy `flipMult` na boczne ramię korpusu
-                            strictPoints.push(
-                                new THREE.Vector3(flipMult * (sign * (hw - (cab.d2 || 0.5))), 0, flipMult * ((cab.w2 || 0.9) - hd)),
-                                new THREE.Vector3(flipMult * (sign * hw), 0, flipMult * ((cab.w2 || 0.9) - hd))
-                            );
-                          }
-                          
-                          if (showWorktopGlobal && cab.hasWorktop && cab.type !== 'puste') {
-                            if (cab.type === 'naroznik') {
-                               const sign = cab.cornerSide === 'prawy' ? 1 : -1;
-                               const w1 = cab.w + (worktopDepth - 0.53);
-                               const cx1 = sign * (worktopDepth - 0.53) / 2;
-                               const cz1 = 0.28 - hwd;
-                               strictPoints.push(
-                                  new THREE.Vector3(flipMult * (cx1 + w1/2), 0, flipMult * (cz1 + hwd)),
-                                  new THREE.Vector3(flipMult * (cx1 + w1/2), 0, flipMult * (cz1 - hwd)),
-                                  new THREE.Vector3(flipMult * (cx1 - w1/2), 0, flipMult * (cz1 + hwd)),
-                                  new THREE.Vector3(flipMult * (cx1 - w1/2), 0, flipMult * (cz1 - hwd))
-                               );
-                               const w2 = (cab.w2 || 0.9) - 0.53;
-                               const cx2 = sign * (cab.w/2 - 0.53 + hwd);
-                               const cz2 = (cab.w2 || 0.9)/2 + 0.015;
-                               strictPoints.push(
-                                  new THREE.Vector3(flipMult * (cx2 + hwd), 0, flipMult * (cz2 + w2/2)),
-                                  new THREE.Vector3(flipMult * (cx2 + hwd), 0, flipMult * (cz2 - w2/2)),
-                                  new THREE.Vector3(flipMult * (cx2 - hwd), 0, flipMult * (cz2 + w2/2)),
-                                  new THREE.Vector3(flipMult * (cx2 - hwd), 0, flipMult * (cz2 - w2/2))
-                               );
-                            } else {
-                               const wtCenterZ = (cab.d / 2 + 0.03) - hwd;
-                               const localZ = isFlippedLocal ? -wtCenterZ : wtCenterZ;
-                               strictPoints.push(
-                                  new THREE.Vector3(hw, 0, localZ + hwd), new THREE.Vector3(-hw, 0, localZ + hwd),
-                                  new THREE.Vector3(hw, 0, localZ - hwd), new THREE.Vector3(-hw, 0, localZ - hwd)
-                               );
-                            }
+                            isFlipped = (cornersBefore === 2);
+                          } else if (cornersBefore === 2) {
+                            isFlipped = !isFlipped; 
                           }
 
-                          let actuallyOutside = false;
-                          for (let pt of strictPoints) {
-                            const wpt = pt.clone();
-                            wpt.applyEuler(new THREE.Euler(0, item.rot, 0));
-                            wpt.add(new THREE.Vector3(item.pos[0], item.pos[1], item.pos[2]));
-                            
-                            let insidePt = false;
-                            let isClose = false;
-                            for (let i = 0, j = item.polyNodes.length - 1; i < item.polyNodes.length; j = i++) {
-                              let xi = item.polyNodes[i].x, zi = item.polyNodes[i].z;
-                              let xj = item.polyNodes[j].x, zj = item.polyNodes[j].z;
-                              if (((zi > wpt.z) !== (zj > wpt.z)) && (wpt.x < (xj - xi) * (wpt.z - zi) / (zj - zi) + xi)) insidePt = !insidePt;
+                          const isActiveCab = (runIndex === activeRunIdx && index === activeIdx);
+
+                          return (
+                            <group key={cab.id} position={item.pos} rotation={[0, item.rot, 0]}>
+                              {cab.type === 'naroznik' ? (
+                                 <group rotation={[0, isFlipped ? Math.PI : 0, 0]}>
+                                  <SzafkaNarozna cab={cab} dekorFront={f} dekorBody={b} />
+                                 </group>
+                              ) : (
+                                 <group rotation={[0, isFlipped ? Math.PI : 0, 0]}>
+                                   <Szafka 
+                                     width={cab.w} height={cab.h} depth={cab.d} dekorFront={f} dekorBody={b} 
+                                     type={cab.type} baseType={cab.baseType} doorCount={cab.doorsC} 
+                                     doorDirection={cab.doorDirection} drawersCount={cab.drawersC} 
+                                     shelvesCount={cab.shelvesC} drawerRatios={cab.ratios} 
+                                     hybridSplit={cab.split} hybridOrder={cab.order} 
+                                   />
+                                 </group>
+                              )}
                               
-                              let l2 = (xj - xi)**2 + (zj - zi)**2;
-                              if (l2 > 0) {
-                                  let t = ((wpt.x - xi)*(xj - xi) + (wpt.z - zi)*(zj - zi)) / l2;
-                                  t = Math.max(0, Math.min(1, t));
-                                  let projX = xi + t * (xj - xi);
-                                  let projZ = zi + t * (zj - zi);
-                                  if (Math.sqrt((wpt.x - projX)**2 + (wpt.z - projZ)**2) <= 0.003) isClose = true;
+                              {isActiveCab && (
+                                <CabinetHighlight 
+                                  key={highlightKey} 
+                                  cab={cab} 
+                                  isFlipped={isFlipped}
+                                  showWorktop={showWorktopGlobal && cab.hasWorktop && cab.type !== 'puste'}
+                                  worktopDepth={worktopDepth}
+                                  nextIsFlipped={(() => {
+                                     const nextCab = runCabinets[index + 1];
+                                     let nif = (nextCab && nextCab.type !== 'naroznik') ? (nextCab.reverseFront || false) : false;
+                                     const nextCornersBefore = runCabinets.slice(0, index + 1).filter(c => c.type === 'naroznik').length;
+                                     if (nextCornersBefore === 2 && nextCab && nextCab.type !== 'naroznik') nif = !nif;
+                                     return nif;
+                                  })()}
+                                />
+                              )}
+
+                              {item.isOutOfBounds && (
+                                <CabinetError 
+                                  cab={cab} 
+                                  isFlipped={isFlipped} 
+                                  polyNodes={item.polyNodes} 
+                                  sceneCenter={sceneCenter}
+                                  showWorktop={showWorktopGlobal && cab.hasWorktop && cab.type !== 'puste'}
+                                  worktopDepth={worktopDepth}
+                                  nextIsFlipped={(() => {
+                                     const nextCab = runCabinets[index + 1];
+                                     let nif = (nextCab && nextCab.type !== 'naroznik') ? (nextCab.reverseFront || false) : false;
+                                     const nextCornersBefore = runCabinets.slice(0, index + 1).filter(c => c.type === 'naroznik').length;
+                                     if (nextCornersBefore === 2 && nextCab && nextCab.type !== 'naroznik') nif = !nif;
+                                     return nif;
+                                  })()}
+                                />
+                              )}
+
+                              {showWorktopGlobal && cab.hasWorktop && cab.type !== 'puste' && (() => {
+                                 const nextCab = runCabinets[index + 1];
+                                 let nextIsFlipped = (nextCab && nextCab.type !== 'naroznik') ? (nextCab.reverseFront || false) : false;
+                                 const nextCornersBefore = runCabinets.slice(0, index + 1).filter(c => c.type === 'naroznik').length;
+                                 if (nextCornersBefore === 2 && nextCab && nextCab.type !== 'naroznik') {
+                                   nextIsFlipped = !nextIsFlipped;
+                                 }
+                                 return cab.type === 'naroznik' ? (
+                                   <group position={[0, cab.h + 0.119, 0]} rotation={[0, isFlipped ? Math.PI : 0, 0]}>
+                                     <mesh position={[(cab.cornerSide==='prawy'?1:-1) * (worktopDepth - 0.5 - 0.03) / 2, 0, (0.5 / 2 + 0.03) - (worktopDepth / 2)]}>
+                                       <boxGeometry args={[cab.w + (worktopDepth - 0.5 - 0.03) + 0.001, 0.038, worktopDepth]} />
+                                       <PłytaMaterial 
+                                         dekor={DEKORY[worktopDecor]} 
+                                         w={cab.w + (worktopDepth - 0.5 - 0.03)} 
+                                         h={worktopDepth} 
+                                         rotate 
+                                         offsetX={isFlipped ? item.dist + cab.w + (cab.cornerSide === 'lewy' ? (worktopDepth - 0.5 - 0.03) : 0) - (runCabinets[index - 1] ? runCabinets[index - 1].w : 0.6) : item.dist} 
+                                         offsetY={isFlipped ? -(item.crossDist + (wtCenterZ * 2)) : item.crossDist} 
+                                       />
+                                     </mesh>
+                                     <mesh 
+                                       position={[(cab.cornerSide==='prawy'?1:-1) * (cab.w/2 - 0.5 - 0.03 + worktopDepth/2), 0, (cab.w2||0.9)/2 + 0.015]}
+                                       rotation={[0, (cab.cornerSide === 'prawy' ? -Math.PI / 2 : Math.PI / 2) + (nextIsFlipped ? Math.PI : 0), 0]}
+                                     >
+                                       <boxGeometry args={[(cab.w2||0.9) - 0.5 - 0.03 + 0.001, 0.038, worktopDepth]} />
+                                       <PłytaMaterial 
+                                         dekor={DEKORY[worktopDecor]} 
+                                         w={(cab.w2||0.9) - 0.5 - 0.03} 
+                                         h={worktopDepth} 
+                                         rotate 
+                                         offsetX={nextIsFlipped ? -(item.dist + cab.w + 0.03) : (item.dist + cab.w + 0.03)} 
+                                         offsetY={item.crossDist + (cab.cornerSide === 'prawy' ? 0.07 : -0.07) + (nextIsFlipped ? (wtCenterZ * 2) : 0)} 
+                                       />
+                                     </mesh>
+                                   </group>
+                                 ) : (
+                                   <mesh position={[0, cab.h + 0.119, isFlipped ? -wtCenterZ : wtCenterZ]}>
+                                     <boxGeometry args={[cab.w + 0.001, 0.038, worktopDepth]} />
+                                     <PłytaMaterial 
+                                       dekor={DEKORY[worktopDecor]} 
+                                       w={cab.w} 
+                                       h={worktopDepth} 
+                                       rotate 
+                                       offsetX={isFlipped ? -item.dist : item.dist} 
+                                       offsetY={item.crossDist + (isFlipped ? (wtCenterZ * 2) : 0)} 
+                                     />
+                                   </mesh>
+                                 );
+                              })()}
+                            </group>
+                          );
+                        })}
+
+                        {/* OSTRZEŻENIA DLA TEGO KONKRETNEGO CIĄGU */}
+                        {(() => {
+                          const errorGroups = [];
+                          let currentGroup = [];
+                          
+                          currentLayout.forEach((item, index) => {
+                            let showText = false;
+                            
+                            if (item.isOutOfBounds) {
+                              const cab = runCabinets.find(c => c.id === item.id);
+                              if (cab && item.polyNodes && item.polyNodes.length >= 3) {
+                                const hw = cab.w / 2; const hd = cab.d / 2;
+                                const hwd = worktopDepth / 2;
+                                
+                                let isFlippedLocal = cab.reverseFront || false;
+                                const cornersBefore = runCabinets.slice(0, index).filter(c => c.type === 'naroznik').length;
+                                if (cab.type === 'naroznik') isFlippedLocal = (cornersBefore === 2);
+                                else if (cornersBefore === 2) isFlippedLocal = !isFlippedLocal; 
+                                const flipMult = isFlippedLocal ? -1 : 1;
+
+                                const strictPoints = [
+                                  new THREE.Vector3(0, 0, 0), 
+                                  new THREE.Vector3(flipMult * hw, 0, flipMult * hd), 
+                                  new THREE.Vector3(flipMult * -hw, 0, flipMult * hd),
+                                  new THREE.Vector3(flipMult * hw, 0, flipMult * -hd), 
+                                  new THREE.Vector3(flipMult * -hw, 0, flipMult * -hd)
+                                ];
+                                
+                                if (cab.type === 'naroznik') {
+                                  const sign = cab.cornerSide === 'prawy' ? 1 : -1;
+                                  strictPoints.push(
+                                      new THREE.Vector3(flipMult * (sign * (hw - (cab.d2 || 0.5))), 0, flipMult * ((cab.w2 || 0.9) - hd)),
+                                      new THREE.Vector3(flipMult * (sign * hw), 0, flipMult * ((cab.w2 || 0.9) - hd))
+                                  );
+                                }
+                                
+                                if (showWorktopGlobal && cab.hasWorktop && cab.type !== 'puste') {
+                                  if (cab.type === 'naroznik') {
+                                     const sign = cab.cornerSide === 'prawy' ? 1 : -1;
+                                     const w1 = cab.w + (worktopDepth - 0.53);
+                                     const cx1 = sign * (worktopDepth - 0.53) / 2;
+                                     const cz1 = 0.28 - hwd;
+                                     strictPoints.push(
+                                        new THREE.Vector3(flipMult * (cx1 + w1/2), 0, flipMult * (cz1 + hwd)),
+                                        new THREE.Vector3(flipMult * (cx1 + w1/2), 0, flipMult * (cz1 - hwd)),
+                                        new THREE.Vector3(flipMult * (cx1 - w1/2), 0, flipMult * (cz1 + hwd)),
+                                        new THREE.Vector3(flipMult * (cx1 - w1/2), 0, flipMult * (cz1 - hwd))
+                                     );
+                                     const w2 = (cab.w2 || 0.9) - 0.53;
+                                     const cx2 = sign * (cab.w/2 - 0.53 + hwd);
+                                     const cz2 = (cab.w2 || 0.9)/2 + 0.015;
+                                     strictPoints.push(
+                                        new THREE.Vector3(flipMult * (cx2 + hwd), 0, flipMult * (cz2 + w2/2)),
+                                        new THREE.Vector3(flipMult * (cx2 + hwd), 0, flipMult * (cz2 - w2/2)),
+                                        new THREE.Vector3(flipMult * (cx2 - hwd), 0, flipMult * (cz2 + w2/2)),
+                                        new THREE.Vector3(flipMult * (cx2 - hwd), 0, flipMult * (cz2 - w2/2))
+                                     );
+                                  } else {
+                                     const wtCenterZ = (cab.d / 2 + 0.03) - hwd;
+                                     const localZ = isFlippedLocal ? -wtCenterZ : wtCenterZ;
+                                     strictPoints.push(
+                                        new THREE.Vector3(hw, 0, localZ + hwd), new THREE.Vector3(-hw, 0, localZ + hwd),
+                                        new THREE.Vector3(hw, 0, localZ - hwd), new THREE.Vector3(-hw, 0, localZ - hwd)
+                                     );
+                                  }
+                                }
+
+                                let actuallyOutside = false;
+                                for (let pt of strictPoints) {
+                                  const wpt = pt.clone();
+                                  wpt.applyEuler(new THREE.Euler(0, item.rot, 0));
+                                  wpt.add(new THREE.Vector3(item.pos[0], item.pos[1], item.pos[2]));
+                                  
+                                  let insidePt = false;
+                                  let isClose = false;
+                                  for (let i = 0, j = item.polyNodes.length - 1; i < item.polyNodes.length; j = i++) {
+                                    let xi = item.polyNodes[i].x, zi = item.polyNodes[i].z;
+                                    let xj = item.polyNodes[j].x, zj = item.polyNodes[j].z;
+                                    if (((zi > wpt.z) !== (zj > wpt.z)) && (wpt.x < (xj - xi) * (wpt.z - zi) / (zj - zi) + xi)) insidePt = !insidePt;
+                                    
+                                    let l2 = (xj - xi)**2 + (zj - zi)**2;
+                                    if (l2 > 0) {
+                                        let t = ((wpt.x - xi)*(xj - xi) + (wpt.z - zi)*(zj - zi)) / l2;
+                                        t = Math.max(0, Math.min(1, t));
+                                        let projX = xi + t * (xj - xi);
+                                        let projZ = zi + t * (zj - zi);
+                                        if (Math.sqrt((wpt.x - projX)**2 + (wpt.z - projZ)**2) <= 0.003) isClose = true;
+                                    }
+                                  }
+                                  if (!insidePt && !isClose) { actuallyOutside = true; break; }
+                                }
+                                showText = actuallyOutside;
+                              } else {
+                                showText = true;
                               }
                             }
-                            if (!insidePt && !isClose) { actuallyOutside = true; break; }
-                          }
-                          showText = actuallyOutside;
-                        } else {
-                          showText = true;
-                        }
-                      }
 
-                      if (showText) {
-                        const cab = cabinets.find(c => c.id === item.id);
-                        currentGroup.push({ ...item, cabH: cab ? cab.h : 0.82 });
-                      } else {
-                        if (currentGroup.length > 0) {
-                          errorGroups.push(currentGroup);
-                          currentGroup = [];
-                        }
-                      }
-                    });
-                    if (currentGroup.length > 0) errorGroups.push(currentGroup);
+                            if (showText) {
+                              const cab = runCabinets.find(c => c.id === item.id);
+                              currentGroup.push({ ...item, cabH: cab ? cab.h : 0.82 });
+                            } else {
+                              if (currentGroup.length > 0) {
+                                errorGroups.push(currentGroup);
+                                currentGroup = [];
+                              }
+                            }
+                          });
+                          if (currentGroup.length > 0) errorGroups.push(currentGroup);
 
-                    return errorGroups.map((group, gIdx) => {
-                      let avgX = 0, avgZ = 0, maxH = 0;
-                      group.forEach(item => {
-                        avgX += item.pos[0];
-                        avgZ += item.pos[2];
-                        if (item.cabH > maxH) maxH = item.cabH;
-                      });
-                      avgX /= group.length;
-                      avgZ /= group.length;
+                          return errorGroups.map((group, gIdx) => {
+                            let avgX = 0, avgZ = 0, maxH = 0;
+                            group.forEach(item => {
+                              avgX += item.pos[0];
+                              avgZ += item.pos[2];
+                              if (item.cabH > maxH) maxH = item.cabH;
+                            });
+                            avgX /= group.length;
+                            avgZ /= group.length;
 
-                      // Inteligentny kąt: pobieramy obrót szafek i obracamy o 90 stopni (Math.PI / 2), aby tekst był idealnie na wprost frontów!
-                      const baseRot = group[0].rot + (Math.PI / 2);
+                            const baseRot = group[0].rot + (Math.PI / 2);
 
-                      return (
-                        <group key={`error-label-${gIdx}`} position={[avgX, maxH + 0.5, avgZ]} rotation={[0, baseRot, 0]}>
-                           {/* NOWOŚĆ: Fizyczna biała tabliczka tła z zaokrąglonymi rogami, w pełni nieprzezroczysta */}
-                           <RoundedBox args={[2.25, 0.28, 0.012]} radius={0.06} smoothness={4} position={[0, 0, 0]}>
-                             <meshBasicMaterial color="#ffffff" />
-                           </RoundedBox>
-
-                           {/* Napis z PRZODU (odsunięty na 0.008, dla pewności braku przenikania) */}
-                           <Text
-                             position={[0, 0, 0.008]}
-                             fontSize={0.12}
-                             color="#e74c3c"
-                             anchorX="center"
-                             anchorY="middle"
-                             fontWeight="bold"
-                           >
-                             WYMIARY WIĘKSZE NIŻ ŚCIANA!
-                           </Text>
-                           
-                           {/* Napis z TYŁU (sklejony plecami, odwrócony o 180 stopni) */}
-                           <Text
-                             position={[0, 0, -0.008]}
-                             rotation={[0, Math.PI, 0]}
-                             fontSize={0.12}
-                             color="#e74c3c"
-                             anchorX="center"
-                             anchorY="middle"
-                             fontWeight="bold"
-                           >
-                             WYMIARY WIĘKSZE NIŻ ŚCIANA!
-                           </Text>
-                        </group>
-                      );
-                    });
-                  })()}
-
+                            return (
+                              <group key={`error-label-${run.id}-${gIdx}`} position={[avgX, maxH + 0.5, avgZ]} rotation={[0, baseRot, 0]}>
+                                 <RoundedBox args={[2.25, 0.28, 0.012]} radius={0.06} smoothness={4} position={[0, 0, 0]}>
+                                   <meshBasicMaterial color="#ffffff" />
+                                 </RoundedBox>
+                                 <Text position={[0, 0, 0.008]} fontSize={0.12} color="#e74c3c" anchorX="center" anchorY="middle" fontWeight="bold">WYMIARY WIĘKSZE NIŻ ŚCIANA!</Text>
+                                 <Text position={[0, 0, -0.008]} rotation={[0, Math.PI, 0]} fontSize={0.12} color="#e74c3c" anchorX="center" anchorY="middle" fontWeight="bold">WYMIARY WIĘKSZE NIŻ ŚCIANA!</Text>
+                              </group>
+                            );
+                          });
+                        })()}
+                      </group>
+                    );
+                  })}
                 </Suspense>
                 <OrbitControls makeDefault target={sceneCenter} enablePan={true} />
               </Canvas>
+            </div>
+          </div>
+        )}
+
+        {/* NOWOŚĆ: MODAL Z WYBOREM "INNYCH" SZAFEK */}
+        {showOtherModal && (
+          <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, backdropFilter: 'blur(3px)' }}>
+            <div style={{ backgroundColor: '#fff', padding: '30px', borderRadius: '16px', width: '600px', maxWidth: '90%', boxShadow: '0 10px 40px rgba(0,0,0,0.4)', position: 'relative' }}>
+              
+              {/* Nagłówek okna */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #e9ecef', paddingBottom: '15px', marginBottom: '20px' }}>
+                <h2 style={{ color: '#2c3e50', margin: 0, fontSize: '22px' }}>Wybierz szafkę specjalną</h2>
+                <button onClick={() => setShowOtherModal(false)} style={{ background: 'none', border: 'none', fontSize: '28px', cursor: 'pointer', color: '#95a5a6', padding: '0 5px' }}>✕</button>
+              </div>
+
+              {/* Siatka z przyszłymi szafkami */}
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '15px' }}>
+                
+                {/* Miejsce na przyszłe moduły (Będziemy tu dodawać kolejne klocki) */}
+                <div style={{ width: '100%', textAlign: 'center', padding: '50px 20px', backgroundColor: '#f8f9fa', border: '2px dashed #bdc3c7', borderRadius: '12px', color: '#7f8c8d' }}>
+                  <span style={{ fontSize: '40px', display: 'block', marginBottom: '15px' }}>🛠️</span>
+                  <b style={{ fontSize: '18px', color: '#2c3e50' }}>Wkrótce pojawią się tu nowe rodzaje szafek!</b>
+                  <p style={{ marginTop: '10px', fontSize: '14px' }}>Będziemy tu po kolei dodawać: szafkę zlewicową, piekarnikową, cargo, otwarte półki i wiele innych.</p>
+                </div>
+                
+              </div>
+              
             </div>
           </div>
         )}
