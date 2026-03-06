@@ -286,6 +286,109 @@ function SzafkaNarozna({ cab, dekorFront, dekorBody }) {
     </group>
   );
 }
+
+// --- NOWOŚĆ: KOMPONENT DRZWI DLA NAROŻNIKA ZEWNĘTRZNEGO ---
+function AnimatedCornerDoorsZew({ w, d, w2, d2, h, t, gap, dekorFront, isRight }) {
+  const [open, setOpen] = useState(false);
+  const hinge1 = useRef();
+  const hinge2 = useRef();
+
+  const dW1 = w - gap; 
+  const dW2 = w2 - t - gap; 
+
+  useFrame(() => {
+    if (hinge1.current) hinge1.current.rotation.y = THREE.MathUtils.lerp(hinge1.current.rotation.y, open ? (isRight ? 2.35 : -2.35) : 0, 0.15);
+    if (hinge2.current) hinge2.current.rotation.y = THREE.MathUtils.lerp(hinge2.current.rotation.y, open ? (isRight ? -2.35 : 2.35) : 0, 0.15);
+  });
+
+  if (isRight) {
+    return (
+      <group onClick={(e) => { e.stopPropagation(); setOpen(!open); }}>
+        <group position={[-w/2, h/2, d/2 + t/2]} ref={hinge1}>
+          <mesh position={[dW1/2, 0, 0]}><boxGeometry args={[dW1, h-gap, t]} /><PłytaMaterial dekor={dekorFront} w={dW1} h={h} /></mesh>
+          <mesh position={[dW1 - 0.04, h/2 - 0.18, t/2 + 0.015]}><boxGeometry args={[0.015, 0.15, 0.03]} /><meshStandardMaterial color="#d4d4d4" /></mesh>
+        </group>
+        <group position={[w/2 + t/2, h/2, d/2 - w2]} ref={hinge2}>
+          <mesh position={[0, 0, dW2/2]}><boxGeometry args={[t, h-gap, dW2]} /><PłytaMaterial dekor={dekorFront} w={dW2} h={h} /></mesh>
+          <mesh position={[t/2 + 0.015, h/2 - 0.18, dW2 - 0.04]}><boxGeometry args={[0.03, 0.15, 0.015]} /><meshStandardMaterial color="#d4d4d4" /></mesh>
+        </group>
+      </group>
+    );
+  } else {
+    return (
+      <group onClick={(e) => { e.stopPropagation(); setOpen(!open); }}>
+        <group position={[w/2, h/2, d/2 + t/2]} ref={hinge1}>
+          <mesh position={[-dW1/2, 0, 0]}><boxGeometry args={[dW1, h-gap, t]} /><PłytaMaterial dekor={dekorFront} w={dW1} h={h} /></mesh>
+          <mesh position={[-dW1 + 0.04, h/2 - 0.18, t/2 + 0.015]}><boxGeometry args={[0.015, 0.15, 0.03]} /><meshStandardMaterial color="#d4d4d4" /></mesh>
+        </group>
+        <group position={[-w/2 - t/2, h/2, d/2 - w2]} ref={hinge2}>
+          <mesh position={[0, 0, dW2/2]}><boxGeometry args={[t, h-gap, dW2]} /><PłytaMaterial dekor={dekorFront} w={dW2} h={h} /></mesh>
+          <mesh position={[-t/2 - 0.015, h/2 - 0.18, dW2 - 0.04]}><boxGeometry args={[0.03, 0.15, 0.015]} /><meshStandardMaterial color="#d4d4d4" /></mesh>
+        </group>
+      </group>
+    );
+  }
+}
+
+// --- NOWOŚĆ: GŁÓWNY KOMPONENT NAROŻNIKA ZEWNĘTRZNEGO ---
+function SzafkaNaroznaZew({ cab, dekorFront, dekorBody }) {
+  const { w, w2, d, d2, h, baseType, cornerSide } = cab;
+  const t = 0.018; const baseH = 0.10;
+  const isRight = cornerSide === 'prawy';
+  const sign = isRight ? 1 : -1;
+  const sideY = baseType === 'cokol' ? (h - baseH) / 2 : h / 2;
+  const sideH = baseType === 'cokol' ? h + baseH : h;
+
+  const safeW2 = w2 || 0.9;
+  const safeD2 = d2 || 0.5;
+
+  const blockAw = w - safeD2;
+  const blockAx = sign * (-w/2 + blockAw/2);
+
+  const blockBw = safeD2;
+  const blockBx = sign * (w/2 - blockBw/2);
+  const blockBz = d/2 - safeW2/2;
+
+  return (
+    <group position={[0, baseH, 0]}>
+      {/* KORPUS PIONOWY */}
+      <group position={[0, sideY, 0]}>
+        <mesh position={[-sign * (w/2 - t/2), 0, 0]}><boxGeometry args={[t, sideH, d]} /><PłytaMaterial dekor={dekorBody} w={d} h={sideH} /></mesh>
+        <mesh position={[blockBx, 0, d/2 - safeW2 + t/2]}><boxGeometry args={[blockBw, sideH, t]} /><PłytaMaterial dekor={dekorBody} w={blockBw} h={sideH} /></mesh>
+        <mesh position={[blockAx, 0, -d/2 + t/2]}><boxGeometry args={[blockAw, sideH, t]} /><PłytaMaterial dekor={dekorBody} w={blockAw} h={sideH} /></mesh>
+        <mesh position={[sign * (w/2 - safeD2 + t/2), 0, d/2 - safeW2/2 - d/2]}><boxGeometry args={[t, sideH, safeW2 - d]} /><PłytaMaterial dekor={dekorBody} w={safeW2 - d} h={sideH} /></mesh>
+      </group>
+
+      {/* PÓŁKI I WIEŃCE */}
+      {[
+        t/2,
+        ...Array.from({ length: cab.shelvesC || 0 }).map((_, i) => t/2 + ((h - 2*t) / ((cab.shelvesC || 0) + 1)) * (i + 1)),
+        h - t/2
+      ].map((y, idx) => (
+        <group key={idx} position={[0, y, 0]}>
+          <mesh position={[blockAx, 0, 0]}><boxGeometry args={[blockAw, t, d]} /><PłytaMaterial dekor={dekorBody} w={blockAw} h={d} rotate /></mesh>
+          <mesh position={[blockBx, 0, blockBz]}><boxGeometry args={[blockBw, t, safeW2]} /><PłytaMaterial dekor={dekorBody} w={blockBw} h={safeW2} rotate /></mesh>
+        </group>
+      ))}
+
+      <AnimatedCornerDoorsZew w={w} d={d} w2={safeW2} d2={safeD2} h={h} t={t} gap={0.002} dekorFront={dekorFront} isRight={isRight} />
+
+      <group position={[0, -baseH/2, 0]}>
+        {baseType === 'nozki_regulowane' && (
+          <>
+            <group position={[-sign*(w/2 - 0.05), 0, d/2 - 0.15]}><NozkaRegulowana height={baseH} /></group>
+            <group position={[sign*(w/2 - 0.05), 0, d/2 - 0.15]}><NozkaRegulowana height={baseH} /></group>
+            <group position={[-sign*(w/2 - 0.05), 0, -d/2 + 0.05]}><NozkaRegulowana height={baseH} /></group>
+            <group position={[sign*(w/2 - safeD2 + 0.05), 0, -d/2 + 0.05]}><NozkaRegulowana height={baseH} /></group>
+            <group position={[sign*(w/2 - 0.05), 0, d/2 - safeW2 + 0.05]}><NozkaRegulowana height={baseH} /></group>
+            <group position={[sign*(w/2 - safeD2 + 0.05), 0, d/2 - safeW2 + 0.05]}><NozkaRegulowana height={baseH} /></group>
+          </>
+        )}
+      </group>
+    </group>
+  );
+}
+
 function FrontDrzwi({ doorWidth, height, t, gap, dekor, side = 'left' }) {
   const [isOpen, setIsOpen] = useState(false);
   const ref = useRef();
@@ -497,10 +600,13 @@ function MiniaturaSzafki({ cab, size = 50, showHandles = true }) {
   const fColor = '#ffffff'; 
   const bColor = '#f8f9fa';
 
-  const isCornerOrEmpty = cab.type === 'puste' || cab.type === 'naroznik';
+  // POPRAWKA: Dodajemy 'inne' do listy ikon, żeby usunąć z nich ramkę korpusu i nóżki!
+  const isCornerOrEmpty = cab.type === 'puste' || cab.type === 'naroznik' || cab.type === 'inne';
 
-  const bodyStyle = { 
-    width: `${widthPx}px`, 
+  const bodyStyle = {
+    // ZAMROŻENIE WYSOKOŚCI: wszystkie ikony (nawet 'inne') mają rygorystycznie tę samą wysokość (heightPx)
+    // Szerokość dla 'inne' to 1.6x wysokości, żeby zmieścił się ten podłużny wektor kuchni.
+    width: cab.type === 'inne' ? `${heightPx * 1.6}px` : `${widthPx}px`, 
     height: `${heightPx}px`, 
     backgroundColor: isCornerOrEmpty ? 'transparent' : bColor, 
     padding: isCornerOrEmpty ? '0' : '1px', 
@@ -563,8 +669,81 @@ function MiniaturaSzafki({ cab, size = 50, showHandles = true }) {
   const renderContent = () => {
     if (cab.type === 'puste') return renderEmptyX();
     if (cab.type === 'naroznik') return renderCornerIcon();
-    // NOWOŚĆ: Ikonka "..." dla przycisku INNE
-    if (cab.type === 'inne') return <div style={{width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px', fontWeight: 'bold', color: outlineColor, letterSpacing: '2px'}}>...</div>;
+
+    // NOWOŚĆ: Ikona dla Narożnika Zewnętrznego (Izometria odwrócona z frontami na zewnątrz)
+    if (cab.type === 'naroznik_zew') {
+      const isRight = cab.cornerSide !== 'lewy';
+      return (
+        <div style={{width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
+          <svg viewBox="0 0 100 100" style={{ width: '100%', height: '100%', overflow: 'visible', transform: isRight ? 'scale(2.0)' : 'scale(-2.0, 2.0)' }}>
+            {/* Blat/Góra */}
+            <polygon points="50,48 85,30 70,20 50,30 30,20 15,30" fill={bColor} stroke={outlineColor} strokeWidth="3" strokeLinejoin="round" />
+            {/* Boki od strony ściany */}
+            <polygon points="15,30 30,20 30,60 15,70" fill={bColor} stroke={outlineColor} strokeWidth="3" strokeLinejoin="round" />
+            <polygon points="70,20 85,30 85,70 70,60" fill={bColor} stroke={outlineColor} strokeWidth="3" strokeLinejoin="round" />
+            {/* Fronty zewnętrzne do widza */}
+            <polygon points="15,30 50,48 50,88 15,70" fill={fColor} stroke={outlineColor} strokeWidth="3" strokeLinejoin="round" />
+            <polygon points="50,48 85,30 85,70 50,88" fill={fColor} stroke={outlineColor} strokeWidth="3" strokeLinejoin="round" />
+            {showHandles && (
+              <>
+                <line x1="32" y1="55" x2="32" y2="67" stroke={outlineColor} strokeWidth="3" strokeLinecap="round" />
+                <line x1="68" y1="55" x2="68" y2="67" stroke={outlineColor} strokeWidth="3" strokeLinecap="round" />
+              </>
+            )}
+          </svg>
+        </div>
+      );
+    }
+    
+    // NOWOŚĆ: Idealna ikonka Line-Art z obciętym paddingiem, żeby była maksymalnie duża
+    if (cab.type === 'inne') {
+      const lineStyle = { 
+        stroke: outlineColor, 
+        fill: 'none', 
+        strokeWidth: 2, 
+        strokeLinecap: 'round', 
+        strokeLinejoin: 'round' 
+      };
+
+      return (
+        <div style={{width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0px'}}>
+          {/* Obcięty viewBox, by usunąć zbędne, puste powietrze wokół grafiki wewnątrz SVG */}
+          <svg viewBox="0 20 100 70" style={{ width: '100%', height: '100%', overflow: 'visible' }}>
+            <g>
+              {/* PIEKARNIK (Lewa strona) */}
+              <rect x="8" y="60" width="24" height="30" {...lineStyle} />
+              <line x1="8" y1="68" x2="32" y2="68" {...lineStyle} />
+              <circle cx="14" cy="64" r="1.5" fill={outlineColor} stroke="none" />
+              <circle cx="20" cy="64" r="1.5" fill={outlineColor} stroke="none" />
+              <circle cx="26" cy="64" r="1.5" fill={outlineColor} stroke="none" />
+              <rect x="13" y="73" width="14" height="12" rx="2" {...lineStyle} />
+
+              {/* OKAP (Nad piekarnikiem) */}
+              <path d="M 17 25 H 23 V 35 L 30 45 V 48 H 10 V 45 L 17 35 Z" {...lineStyle} />
+
+              {/* SZUFLADY (Środek lewy) */}
+              <rect x="32" y="60" width="18" height="30" {...lineStyle} />
+              <line x1="32" y1="70" x2="50" y2="70" {...lineStyle} />
+              <line x1="32" y1="80" x2="50" y2="80" {...lineStyle} />
+              <line x1="38" y1="65" x2="44" y2="65" {...lineStyle} />
+              <line x1="38" y1="75" x2="44" y2="75" {...lineStyle} />
+              <line x1="38" y1="85" x2="44" y2="85" {...lineStyle} />
+
+              {/* SZAFKA ZE ZLEWEM (Środek prawy) */}
+              <rect x="50" y="60" width="18" height="30" {...lineStyle} />
+              <path d="M 61 60 V 50 C 61 44, 55 44, 55 50 V 52" {...lineStyle} />
+
+              {/* LODÓWKA (Prawa strona) */}
+              <rect x="68" y="30" width="24" height="60" {...lineStyle} />
+              <line x1="68" y1="60" x2="92" y2="60" {...lineStyle} />
+              <line x1="72" y1="40" x2="72" y2="52" {...lineStyle} />
+              <line x1="72" y1="66" x2="72" y2="82" {...lineStyle} />
+            </g>
+          </svg>
+        </div>
+      );
+    }
+
     if (cab.type === 'drzwi') return renderDoors();
     if (cab.type === 'szuflady') {
       return [33.33, 33.33, 33.34].map((r, i) => <div key={i} style={{ ...frontStyle, height: `${r}%` }}><Handle /></div>);
@@ -576,7 +755,6 @@ function MiniaturaSzafki({ cab, size = 50, showHandles = true }) {
       return cab.order === 'szuflady-gora' ? <>{drP}{doP}</> : <>{doP}{drP}</>;
     }
   };
-
   const isCocol = cab.baseType === 'cokol' || cab.baseType === 'Pełna skrzynia cokołowa';
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
@@ -632,6 +810,7 @@ function CabinetHighlight({ cab, isFlipped, showWorktop, worktopDepth, nextIsFli
 
   const h = cab.h + 0.1;
   const isCorner = cab.type === 'naroznik';
+  const isOuterCorner = cab.type === 'naroznik_zew';
   const wtCenterZ = (cab.d / 2 + 0.03) - ((worktopDepth || 0.6) / 2);
 
   return (
@@ -645,6 +824,11 @@ function CabinetHighlight({ cab, isFlipped, showWorktop, worktopDepth, nextIsFli
            {isCorner && (
              <mesh material={mat} position={[(cab.cornerSide === 'prawy' ? 1 : -1) * (cab.w/2 - 0.5 + (cab.d2 || 0.5)/2), 0, (cab.w2 || 0.9)/2 - cab.d/2]}>
                <boxGeometry args={[(cab.d2 || 0.5) + 0.02, h + 0.02, (cab.w2 || 0.9) - 0.5 + 0.02]} />
+             </mesh>
+           )}
+           {isOuterCorner && (
+             <mesh material={mat} position={[(cab.cornerSide === 'prawy' ? 1 : -1) * (cab.w/2 - (cab.d2 || 0.5)/2), 0, cab.d/2 - (cab.w2 || 0.9)/2]}>
+               <boxGeometry args={[(cab.d2 || 0.5) + 0.02, h + 0.02, (cab.w2 || 0.9) - cab.d + 0.02]} />
              </mesh>
            )}
          </group>
@@ -665,6 +849,16 @@ function CabinetHighlight({ cab, isFlipped, showWorktop, worktopDepth, nextIsFli
                <boxGeometry args={[(cab.w2||0.9) - 0.5 - 0.03 + 0.02, 0.038 + 0.02, worktopDepth + 0.02]} />
              </mesh>
            </group>
+         ) : isOuterCorner ? (
+             <group position={[0, cab.h + 0.119, 0]} rotation={[0, isFlipped ? Math.PI : 0, 0]}>
+                 {/* Uproszczony blat dla narożnika zew. (2 proste klocki) */}
+                 <mesh position={[(cab.cornerSide==='prawy'?1:-1) * (-cab.w/2 + (cab.w - (cab.d2||0.5))/2), 0, (worktopDepth - cab.d)/2]} material={mat}>
+                   <boxGeometry args={[cab.w - (cab.d2||0.5) + 0.02, 0.038 + 0.02, worktopDepth + 0.02]} />
+                 </mesh>
+                 <mesh position={[(cab.cornerSide==='prawy'?1:-1) * (cab.w/2 - (cab.d2||0.5)/2), 0, cab.d/2 - (cab.w2||0.9)/2 + (worktopDepth - cab.d)/2]} material={mat}>
+                   <boxGeometry args={[(cab.d2||0.5) + (worktopDepth - cab.d) + 0.02, 0.038 + 0.02, (cab.w2||0.9) + (worktopDepth - cab.d) + 0.02]} />
+                 </mesh>
+             </group>
          ) : (
            <mesh position={[0, cab.h + 0.119, isFlipped ? -wtCenterZ : wtCenterZ]} material={mat}>
              <boxGeometry args={[cab.w + 0.02, 0.038 + 0.02, worktopDepth + 0.02]} />
@@ -679,6 +873,7 @@ function CabinetHighlight({ cab, isFlipped, showWorktop, worktopDepth, nextIsFli
 function CabinetError({ cab, isFlipped, polyNodes, showWorktop, worktopDepth, nextIsFlipped, sceneCenter }) {
   const h = cab.h + 0.1;
   const isCorner = cab.type === 'naroznik';
+  const isOuterCorner = cab.type === 'naroznik_zew';
   const wtCenterZ = (cab.d / 2 + 0.03) - ((worktopDepth || 0.6) / 2);
 
   const errorMat = useMemo(() => {
@@ -768,10 +963,14 @@ function CabinetError({ cab, isFlipped, polyNodes, showWorktop, worktopDepth, ne
              <boxGeometry args={[cab.w, h, cab.d]} />
            </mesh>
            {isCorner && (
-             // POPRAWKA: Usunięto błąd "- cab.d/2" w osi Z. Teraz siatka błędu 
-             // korpusu idealnie pokrywa się z fizycznym końcem szafki.
              <mesh material={errorMat} position={[(cab.cornerSide === 'prawy' ? 1 : -1) * (cab.w/2 - 0.5 + (cab.d2 || 0.5)/2), 0, (cab.w2 || 0.9)/2]}>
                <boxGeometry args={[(cab.d2 || 0.5), h, (cab.w2 || 0.9) - 0.5]} />
+             </mesh>
+           )}
+           {/* NOWOŚĆ: Siatka błędu dla narożnika zewnętrznego */}
+           {isOuterCorner && (
+             <mesh material={errorMat} position={[(cab.cornerSide === 'prawy' ? 1 : -1) * (cab.w/2 - (cab.d2 || 0.5)/2), 0, cab.d/2 - (cab.w2 || 0.9)/2]}>
+               <boxGeometry args={[(cab.d2 || 0.5), h, (cab.w2 || 0.9) - cab.d]} />
              </mesh>
            )}
          </group>
@@ -791,6 +990,15 @@ function CabinetError({ cab, isFlipped, polyNodes, showWorktop, worktopDepth, ne
                <boxGeometry args={[(cab.w2||0.9) - 0.5 - 0.03, 0.038, worktopDepth]} />
              </mesh>
            </group>
+         ) : isOuterCorner ? (
+             <group position={[0, cab.h + 0.119, 0]} rotation={[0, isFlipped ? Math.PI : 0, 0]}>
+                 <mesh position={[(cab.cornerSide==='prawy'?1:-1) * (-cab.w/2 + (cab.w - (cab.d2||0.5))/2), 0, (worktopDepth - cab.d)/2]} material={errorMat}>
+                   <boxGeometry args={[cab.w - (cab.d2||0.5), 0.038, worktopDepth]} />
+                 </mesh>
+                 <mesh position={[(cab.cornerSide==='prawy'?1:-1) * (cab.w/2 - (cab.d2||0.5)/2), 0, cab.d/2 - (cab.w2||0.9)/2 + (worktopDepth - cab.d)/2]} material={errorMat}>
+                   <boxGeometry args={[(cab.d2||0.5) + (worktopDepth - cab.d), 0.038, (cab.w2||0.9) + (worktopDepth - cab.d)]} />
+                 </mesh>
+             </group>
          ) : (
            <mesh position={[0, cab.h + 0.119, isFlipped ? -wtCenterZ : wtCenterZ]} material={errorMat}>
              <boxGeometry args={[cab.w, 0.038, worktopDepth]} />
@@ -1767,22 +1975,26 @@ export default function App() {
               <div style={{ marginBottom: '20px' }}>
                 <label style={{ fontSize: '13px', fontWeight: 'bold', display: 'block', marginBottom: '10px' }}>Wybierz Typ:</label>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '10px' }}>
-                  {/* NOWOŚĆ: Dodano 'inne' do listy */}
-                  {['drzwi', 'szuflady', 'hybryda', 'puste', 'naroznik', 'inne'].map(t => (
-                    <button key={t} onClick={() => {
-                      if (t === 'inne') {
-                        setShowOtherModal(true);
-                        return; // Przycisk INNE nie nadpisuje od razu szafki, tylko otwiera okno!
-                      }
-                      
-                      if (t === 'naroznik' && activeCab.type !== 'naroznik') updateActiveCab({ type: t, w: 1.0, w2: 1.0 });
-                      else if (t !== 'naroznik' && activeCab.type === 'naroznik') updateActiveCab({ type: t, w: 0.6 });
-                      else updateActiveCab({ type: t });
-                    }} style={{ width: 'calc(50% - 4px)', padding: '15px 5px', backgroundColor: (activeCab.type === t && t !== 'inne') ? '#eef2f3' : '#fff', border: `2px solid ${(activeCab.type === t && t !== 'inne') ? '#40c057' : '#ddd'}`, borderRadius: '10px', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', transition: '0.2s' }}>
-                      <MiniaturaSzafki cab={{...activeCab, type: t, w: 0.6, h: 0.82}} size={45} showHandles={true} />
-                      <div style={{ fontSize: '10px', marginTop: '8px', textTransform: 'uppercase', fontWeight: 'bold' }}>{t}</div>
-                    </button>
-                  ))}
+                  {['drzwi', 'szuflady', 'hybryda', 'puste', 'naroznik', 'inne'].map(t => {
+                    // Logika podświetlenia: przycisk "INNE" świeci się na zielono, jeśli aktywna szafka należy do nowej grupy.
+                    const isSpecType = ['naroznik_zew'].includes(activeCab.type);
+                    const isActive = (activeCab.type === t && t !== 'inne') || (t === 'inne' && isSpecType);
+
+                    return (
+                      <button key={t} onClick={() => {
+                        if (t === 'inne') {
+                          setShowOtherModal(true);
+                          return;
+                        }
+                        if (t === 'naroznik' && activeCab.type !== 'naroznik') updateActiveCab({ type: t, w: 1.0, w2: 1.0 });
+                        else if (t !== 'naroznik' && activeCab.type === 'naroznik') updateActiveCab({ type: t, w: 0.6 });
+                        else updateActiveCab({ type: t });
+                      }} style={{ width: 'calc(50% - 4px)', padding: '15px 5px', backgroundColor: isActive ? '#eef2f3' : '#fff', border: `2px solid ${isActive ? '#40c057' : '#ddd'}`, borderRadius: '10px', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', transition: '0.2s' }}>
+                        <MiniaturaSzafki cab={{...activeCab, type: t, w: 0.6, h: 0.82}} size={45} showHandles={true} />
+                        <div style={{ fontSize: '10px', marginTop: '8px', textTransform: 'uppercase', fontWeight: 'bold' }}>{t}</div>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -1796,16 +2008,16 @@ export default function App() {
 
                 <div style={{ marginBottom: '15px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '4px' }}>
-                    <label>Szerokość sekcji {activeCab.type === 'naroznik' && '(Ramię 1)'}: <b>
-                      {activeCab.type === 'naroznik' ? Math.round((activeCab.w - 0.5 + (activeCab.d2 || 0.5)) * 100) : Math.round(activeCab.w * 100)} cm
+                    <label>Szerokość sekcji {['naroznik', 'naroznik_zew'].includes(activeCab.type) && '(Ramię 1)'}: <b>
+                      {['naroznik', 'naroznik_zew'].includes(activeCab.type) ? Math.round((activeCab.w - 0.5 + (activeCab.d2 || 0.5)) * 100) : Math.round(activeCab.w * 100)} cm
                     </b></label>
-                    {activeCab.type === 'naroznik' && <span style={{ fontSize: '11px', color: '#d35400', fontWeight: 'bold' }}>Front: {Math.round((activeCab.w - 0.5)*100)} cm</span>}
+                    {['naroznik', 'naroznik_zew'].includes(activeCab.type) && <span style={{ fontSize: '11px', color: '#d35400', fontWeight: 'bold' }}>Front: {Math.round((activeCab.w - 0.5)*100)} cm</span>}
                   </div>
                   <input type="range" min="0.15" max="1.5" step="0.01" 
-                    value={activeCab.type === 'naroznik' ? activeCab.w - 0.5 + (activeCab.d2 || 0.5) : activeCab.w} 
+                    value={['naroznik', 'naroznik_zew'].includes(activeCab.type) ? activeCab.w - 0.5 + (activeCab.d2 || 0.5) : activeCab.w} 
                     onChange={(e) => {
                       const val = parseFloat(e.target.value);
-                      if (activeCab.type === 'naroznik') updateActiveCab({w: val - (activeCab.d2 || 0.5) + 0.5});
+                      if (['naroznik', 'naroznik_zew'].includes(activeCab.type)) updateActiveCab({w: val - (activeCab.d2 || 0.5) + 0.5});
                       else updateActiveCab({w: val});
                     }} 
                     style={{ width: '100%' }} 
@@ -1816,12 +2028,12 @@ export default function App() {
                   <>
                     <div style={{ marginBottom: '15px' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '4px' }}>
-                        <label>Głębokość {activeCab.type === 'naroznik' && '(Ramię 1)'}: <b>{Math.round(activeCab.d*100)} cm</b></label>
+                        <label>Głębokość {['naroznik', 'naroznik_zew'].includes(activeCab.type) && '(Ramię 1)'}: <b>{Math.round(activeCab.d*100)} cm</b></label>
                       </div>
                       <input type="range" min="0.3" max="0.7" step="0.01" value={activeCab.d} onChange={(e) => updateActiveCab({d: parseFloat(e.target.value)})} style={{ width: '100%' }} />
                     </div>
 
-                    {activeCab.type === 'naroznik' && (
+                    {['naroznik', 'naroznik_zew'].includes(activeCab.type) && (
                       <>
                         <div style={{ marginBottom: '15px' }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '4px' }}>
@@ -1858,7 +2070,7 @@ export default function App() {
                       </div>
                     )}
 
-                    {activeCab.type !== 'drzwi' && activeCab.type !== 'naroznik' && (
+                    {activeCab.type !== 'drzwi' && !['naroznik', 'naroznik_zew'].includes(activeCab.type) && (
                       <div style={{ marginBottom: '20px', padding: '12px', backgroundColor: '#f1f3f5', borderRadius: '10px' }}>
                         <label style={{ fontSize: '13px', fontWeight: 'bold' }}>Liczba szuflad: {activeCab.drawersC}</label>
                         <input type="range" min="1" max="4" value={activeCab.drawersC} onChange={(e) => { const c = parseInt(e.target.value); updateActiveCab({ drawersC: c, ratios: Array(c).fill(100/c) }); }} style={{ width: '100%' }} />
@@ -1880,7 +2092,7 @@ export default function App() {
                       </div>
                     )}
 
-                    {['drzwi', 'hybryda', 'naroznik'].includes(activeCab.type) && (
+                    {['drzwi', 'hybryda', 'naroznik', 'naroznik_zew'].includes(activeCab.type) && (
                       <div style={{ marginBottom: '20px', padding: '12px', backgroundColor: '#e3f2fd', borderRadius: '10px', border: '1px solid #90caf9' }}>
                         <label style={{ fontSize: '13px', fontWeight: 'bold' }}>Liczba półek w środku: {activeCab.shelvesC || 0}</label>
                         <input type="range" min="0" max="5" value={activeCab.shelvesC || 0} onChange={(e) => updateActiveCab({shelvesC: parseInt(e.target.value)})} style={{ width: '100%', marginTop: '5px' }} />
@@ -1892,11 +2104,11 @@ export default function App() {
                     </label>
 
                     {/* NOWA OPCJA: OBRACANIE O 180 STOPNI (Zablokowana dla narożników) */}
-              {activeCab.type !== 'naroznik' && (
-                <label style={{ fontSize: '15px', fontWeight: 'bold', display: 'flex', alignItems: 'center', cursor: 'pointer', marginTop: '10px', color: '#d35400' }}>
-                  <input type="checkbox" checked={activeCab.reverseFront || false} onChange={(e) => updateActiveCab({reverseFront: e.target.checked})} style={{ marginRight: '10px' }} /> Obróć front o 180° (Układ U / Wyspa)
-                </label>
-              )}
+                    {!['naroznik', 'naroznik_zew'].includes(activeCab.type) && (
+                      <label style={{ fontSize: '15px', fontWeight: 'bold', display: 'flex', alignItems: 'center', cursor: 'pointer', marginTop: '10px', color: '#d35400' }}>
+                        <input type="checkbox" checked={activeCab.reverseFront || false} onChange={(e) => updateActiveCab({reverseFront: e.target.checked})} style={{ marginRight: '10px' }} /> Obróć front o 180° (Układ U / Wyspa)
+                      </label>
+                    )}
 
                     <div style={{ marginTop: '10px' }}><label style={{ fontSize: '12px' }}>Podstawa:</label><select value={activeCab.baseType} onChange={(e) => updateActiveCab({baseType: e.target.value})} style={{ width: '100%', padding: '5px' }}>
                       <option value="nozki_regulowane">Nóżki regulowane</option><option value="cokol">Pełna skrzynia cokołowa</option>
@@ -1934,7 +2146,8 @@ export default function App() {
                         {currentLayout.map((item, index) => {
                           let cab = runCabinets[index];
                           
-                          if (cab.type === 'naroznik' && isMirrored) {
+                          // POPRAWKA: Wciągnięto narożnik zewnętrzny do logiki odbicia lustrzanego
+                          if (['naroznik', 'naroznik_zew'].includes(cab.type) && isMirrored) {
                             cab = { ...cab, cornerSide: cab.cornerSide === 'prawy' ? 'lewy' : 'prawy' };
                           }
 
@@ -1942,9 +2155,10 @@ export default function App() {
                           const b = DEKORY[cab.useCustomColors ? cab.bDecor : globalB];
                           const wtCenterZ = (cab.d / 2 + 0.03) - (worktopDepth / 2);
                           
+                          // POPRAWKA: Wciągnięto narożnik zewnętrzny do logiki odwracania frontów w UKŁADZIE U
                           let isFlipped = cab.reverseFront || false;
-                          const cornersBefore = runCabinets.slice(0, index).filter(c => c.type === 'naroznik').length;
-                          if (cab.type === 'naroznik') {
+                          const cornersBefore = runCabinets.slice(0, index).filter(c => ['naroznik', 'naroznik_zew'].includes(c.type)).length;
+                          if (['naroznik', 'naroznik_zew'].includes(cab.type)) {
                             isFlipped = (cornersBefore === 2);
                           } else if (cornersBefore === 2) {
                             isFlipped = !isFlipped; 
@@ -1957,6 +2171,10 @@ export default function App() {
                               {cab.type === 'naroznik' ? (
                                  <group rotation={[0, isFlipped ? Math.PI : 0, 0]}>
                                   <SzafkaNarozna cab={cab} dekorFront={f} dekorBody={b} />
+                                 </group>
+                              ) : cab.type === 'naroznik_zew' ? (
+                                 <group rotation={[0, isFlipped ? Math.PI : 0, 0]}>
+                                  <SzafkaNaroznaZew cab={cab} dekorFront={f} dekorBody={b} />
                                  </group>
                               ) : (
                                  <group rotation={[0, isFlipped ? Math.PI : 0, 0]}>
@@ -1979,9 +2197,9 @@ export default function App() {
                                   worktopDepth={worktopDepth}
                                   nextIsFlipped={(() => {
                                      const nextCab = runCabinets[index + 1];
-                                     let nif = (nextCab && nextCab.type !== 'naroznik') ? (nextCab.reverseFront || false) : false;
-                                     const nextCornersBefore = runCabinets.slice(0, index + 1).filter(c => c.type === 'naroznik').length;
-                                     if (nextCornersBefore === 2 && nextCab && nextCab.type !== 'naroznik') nif = !nif;
+                                     let nif = (nextCab && !['naroznik', 'naroznik_zew'].includes(nextCab.type)) ? (nextCab.reverseFront || false) : false;
+                                     const nextCornersBefore = runCabinets.slice(0, index + 1).filter(c => ['naroznik', 'naroznik_zew'].includes(c.type)).length;
+                                     if (nextCornersBefore === 2 && nextCab && !['naroznik', 'naroznik_zew'].includes(nextCab.type)) nif = !nif;
                                      return nif;
                                   })()}
                                 />
@@ -1997,9 +2215,9 @@ export default function App() {
                                   worktopDepth={worktopDepth}
                                   nextIsFlipped={(() => {
                                      const nextCab = runCabinets[index + 1];
-                                     let nif = (nextCab && nextCab.type !== 'naroznik') ? (nextCab.reverseFront || false) : false;
-                                     const nextCornersBefore = runCabinets.slice(0, index + 1).filter(c => c.type === 'naroznik').length;
-                                     if (nextCornersBefore === 2 && nextCab && nextCab.type !== 'naroznik') nif = !nif;
+                                     let nif = (nextCab && !['naroznik', 'naroznik_zew'].includes(nextCab.type)) ? (nextCab.reverseFront || false) : false;
+                                     const nextCornersBefore = runCabinets.slice(0, index + 1).filter(c => ['naroznik', 'naroznik_zew'].includes(c.type)).length;
+                                     if (nextCornersBefore === 2 && nextCab && !['naroznik', 'naroznik_zew'].includes(nextCab.type)) nif = !nif;
                                      return nif;
                                   })()}
                                 />
@@ -2007,9 +2225,9 @@ export default function App() {
 
                               {showWorktopGlobal && cab.hasWorktop && cab.type !== 'puste' && (() => {
                                  const nextCab = runCabinets[index + 1];
-                                 let nextIsFlipped = (nextCab && nextCab.type !== 'naroznik') ? (nextCab.reverseFront || false) : false;
-                                 const nextCornersBefore = runCabinets.slice(0, index + 1).filter(c => c.type === 'naroznik').length;
-                                 if (nextCornersBefore === 2 && nextCab && nextCab.type !== 'naroznik') {
+                                 let nextIsFlipped = (nextCab && !['naroznik', 'naroznik_zew'].includes(nextCab.type)) ? (nextCab.reverseFront || false) : false;
+                                 const nextCornersBefore = runCabinets.slice(0, index + 1).filter(c => ['naroznik', 'naroznik_zew'].includes(c.type)).length;
+                                 if (nextCornersBefore === 2 && nextCab && !['naroznik', 'naroznik_zew'].includes(nextCab.type)) {
                                    nextIsFlipped = !nextIsFlipped;
                                  }
                                  return cab.type === 'naroznik' ? (
@@ -2039,6 +2257,18 @@ export default function App() {
                                          offsetY={item.crossDist + (cab.cornerSide === 'prawy' ? 0.07 : -0.07) + (nextIsFlipped ? (wtCenterZ * 2) : 0)} 
                                        />
                                      </mesh>
+                                   </group>
+                                 ) : cab.type === 'naroznik_zew' ? (
+                                   <group position={[0, cab.h + 0.119, 0]} rotation={[0, isFlipped ? Math.PI : 0, 0]}>
+                                       {/* Uproszczony blat dla narożnika zew. (2 proste klocki) */}
+                                       <mesh position={[(cab.cornerSide==='prawy'?1:-1) * (-cab.w/2 + (cab.w - (cab.d2||0.5))/2), 0, (worktopDepth - cab.d)/2]}>
+                                         <boxGeometry args={[cab.w - (cab.d2||0.5) + 0.001, 0.038, worktopDepth]} />
+                                         <PłytaMaterial dekor={DEKORY[worktopDecor]} w={cab.w - (cab.d2||0.5)} h={worktopDepth} rotate />
+                                       </mesh>
+                                       <mesh position={[(cab.cornerSide==='prawy'?1:-1) * (cab.w/2 - (cab.d2||0.5)/2), 0, cab.d/2 - (cab.w2||0.9)/2 + (worktopDepth - cab.d)/2]}>
+                                         <boxGeometry args={[(cab.d2||0.5) + (worktopDepth - cab.d) + 0.001, 0.038, (cab.w2||0.9) + (worktopDepth - cab.d)]} />
+                                         <PłytaMaterial dekor={DEKORY[worktopDecor]} w={(cab.d2||0.5) + (worktopDepth - cab.d)} h={(cab.w2||0.9) + (worktopDepth - cab.d)} rotate />
+                                       </mesh>
                                    </group>
                                  ) : (
                                    <mesh position={[0, cab.h + 0.119, isFlipped ? -wtCenterZ : wtCenterZ]}>
@@ -2073,8 +2303,9 @@ export default function App() {
                                 const hwd = worktopDepth / 2;
                                 
                                 let isFlippedLocal = cab.reverseFront || false;
-                                const cornersBefore = runCabinets.slice(0, index).filter(c => c.type === 'naroznik').length;
-                                if (cab.type === 'naroznik') isFlippedLocal = (cornersBefore === 2);
+                                // POPRAWKA: Wciągnięto narożnik zewnętrzny do grupowania powiadomień o błędach!
+                                const cornersBefore = runCabinets.slice(0, index).filter(c => ['naroznik', 'naroznik_zew'].includes(c.type)).length;
+                                if (['naroznik', 'naroznik_zew'].includes(cab.type)) isFlippedLocal = (cornersBefore === 2);
                                 else if (cornersBefore === 2) isFlippedLocal = !isFlippedLocal; 
                                 const flipMult = isFlippedLocal ? -1 : 1;
 
@@ -2214,11 +2445,26 @@ export default function App() {
               {/* Siatka z przyszłymi szafkami */}
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '15px' }}>
                 
-                {/* Miejsce na przyszłe moduły (Będziemy tu dodawać kolejne klocki) */}
-                <div style={{ width: '100%', textAlign: 'center', padding: '50px 20px', backgroundColor: '#f8f9fa', border: '2px dashed #bdc3c7', borderRadius: '12px', color: '#7f8c8d' }}>
-                  <span style={{ fontSize: '40px', display: 'block', marginBottom: '15px' }}>🛠️</span>
-                  <b style={{ fontSize: '18px', color: '#2c3e50' }}>Wkrótce pojawią się tu nowe rodzaje szafek!</b>
-                  <p style={{ marginTop: '10px', fontSize: '14px' }}>Będziemy tu po kolei dodawać: szafkę zlewicową, piekarnikową, cargo, otwarte półki i wiele innych.</p>
+                {/* 1. NAROŻNIK ZEWNĘTRZNY */}
+                <button 
+                  onClick={() => {
+                    updateActiveCab({ type: 'naroznik_zew', w: 0.9, w2: 0.9, d: 0.5, d2: 0.5, cornerSide: 'prawy' });
+                    setShowOtherModal(false);
+                  }}
+                  style={{ width: '130px', padding: '15px', backgroundColor: '#fff', border: '2px solid #ddd', borderRadius: '12px', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', transition: '0.2s', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}
+                  onMouseEnter={(e) => e.currentTarget.style.borderColor = '#40c057'}
+                  onMouseLeave={(e) => e.currentTarget.style.borderColor = '#ddd'}
+                >
+                   <div style={{ width: '60px', height: '60px', pointerEvents: 'none' }}>
+                     <MiniaturaSzafki cab={{type: 'naroznik_zew', cornerSide: 'prawy'}} size={60} showHandles={true} />
+                   </div>
+                   <div style={{ fontSize: '12px', marginTop: '10px', fontWeight: 'bold', color: '#2c3e50', textAlign: 'center' }}>Narożnik Zewnętrzny</div>
+                </button>
+
+                {/* Reszta modułów (Tymczasowy blok na kolejne) */}
+                <div style={{ flex: 1, minWidth: '200px', textAlign: 'center', padding: '30px 20px', backgroundColor: '#f8f9fa', border: '2px dashed #bdc3c7', borderRadius: '12px', color: '#7f8c8d', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                  <span style={{ fontSize: '30px', display: 'block', marginBottom: '10px' }}>🛠️</span>
+                  <p style={{ marginTop: '0px', fontSize: '13px' }}>Tu będą pojawiać się kolejne moduły...</p>
                 </div>
                 
               </div>
