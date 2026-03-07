@@ -293,37 +293,43 @@ function AnimatedCornerDoorsZew({ w, d, w2, d2, h, t, gap, dekorFront, isRight }
   const hinge1 = useRef();
   const hinge2 = useRef();
 
-  const dW1 = w - gap; 
-  const dW2 = w2 - t - gap; 
+  const dW1 = w - t - gap; 
+  const dW2 = w2 - gap; 
 
   useFrame(() => {
-    if (hinge1.current) hinge1.current.rotation.y = THREE.MathUtils.lerp(hinge1.current.rotation.y, open ? (isRight ? 2.35 : -2.35) : 0, 0.15);
-    if (hinge2.current) hinge2.current.rotation.y = THREE.MathUtils.lerp(hinge2.current.rotation.y, open ? (isRight ? -2.35 : 2.35) : 0, 0.15);
+    if (hinge1.current) hinge1.current.rotation.y = THREE.MathUtils.lerp(hinge1.current.rotation.y, open ? (isRight ? -2.35 : 2.35) : 0, 0.15);
+    if (hinge2.current) hinge2.current.rotation.y = THREE.MathUtils.lerp(hinge2.current.rotation.y, open ? (isRight ? 2.35 : -2.35) : 0, 0.15);
   });
 
   if (isRight) {
     return (
       <group onClick={(e) => { e.stopPropagation(); setOpen(!open); }}>
-        <group position={[-w/2, h/2, d/2 + t/2]} ref={hinge1}>
+        <group position={[-w/2, h/2, d/2 - t/2]} ref={hinge1}>
           <mesh position={[dW1/2, 0, 0]}><boxGeometry args={[dW1, h-gap, t]} /><PłytaMaterial dekor={dekorFront} w={dW1} h={h} /></mesh>
           <mesh position={[dW1 - 0.04, h/2 - 0.18, t/2 + 0.015]}><boxGeometry args={[0.015, 0.15, 0.03]} /><meshStandardMaterial color="#d4d4d4" /></mesh>
         </group>
-        <group position={[w/2 + t/2, h/2, d/2 - w2]} ref={hinge2}>
-          <mesh position={[0, 0, dW2/2]}><boxGeometry args={[t, h-gap, dW2]} /><PłytaMaterial dekor={dekorFront} w={dW2} h={h} /></mesh>
-          <mesh position={[t/2 + 0.015, h/2 - 0.18, dW2 - 0.04]}><boxGeometry args={[0.03, 0.15, 0.015]} /><meshStandardMaterial color="#d4d4d4" /></mesh>
+        <group position={[w/2 - t/2, h/2, d/2 - w2]} ref={hinge2}>
+          <group rotation={[0, -Math.PI / 2, 0]}>
+            <mesh position={[dW2/2, 0, 0]}><boxGeometry args={[dW2, h-gap, t]} /><PłytaMaterial dekor={dekorFront} w={dW2} h={h} /></mesh>
+            {/* POPRAWKA: Uchwyt wyciągnięty z wnętrza na przód (-t/2) */}
+            <mesh position={[dW2 - 0.04, h/2 - 0.18, -t/2 - 0.015]}><boxGeometry args={[0.015, 0.15, 0.03]} /><meshStandardMaterial color="#d4d4d4" /></mesh>
+          </group>
         </group>
       </group>
     );
   } else {
     return (
       <group onClick={(e) => { e.stopPropagation(); setOpen(!open); }}>
-        <group position={[w/2, h/2, d/2 + t/2]} ref={hinge1}>
+        <group position={[w/2, h/2, d/2 - t/2]} ref={hinge1}>
           <mesh position={[-dW1/2, 0, 0]}><boxGeometry args={[dW1, h-gap, t]} /><PłytaMaterial dekor={dekorFront} w={dW1} h={h} /></mesh>
           <mesh position={[-dW1 + 0.04, h/2 - 0.18, t/2 + 0.015]}><boxGeometry args={[0.015, 0.15, 0.03]} /><meshStandardMaterial color="#d4d4d4" /></mesh>
         </group>
-        <group position={[-w/2 - t/2, h/2, d/2 - w2]} ref={hinge2}>
-          <mesh position={[0, 0, dW2/2]}><boxGeometry args={[t, h-gap, dW2]} /><PłytaMaterial dekor={dekorFront} w={dW2} h={h} /></mesh>
-          <mesh position={[-t/2 - 0.015, h/2 - 0.18, dW2 - 0.04]}><boxGeometry args={[0.03, 0.15, 0.015]} /><meshStandardMaterial color="#d4d4d4" /></mesh>
+        <group position={[-w/2 + t/2, h/2, d/2 - w2]} ref={hinge2}>
+          <group rotation={[0, Math.PI / 2, 0]}>
+            <mesh position={[-dW2/2, 0, 0]}><boxGeometry args={[dW2, h-gap, t]} /><PłytaMaterial dekor={dekorFront} w={dW2} h={h} /></mesh>
+            {/* POPRAWKA: Uchwyt wyciągnięty z wnętrza na przód (-t/2) */}
+            <mesh position={[-dW2 + 0.04, h/2 - 0.18, -t/2 - 0.015]}><boxGeometry args={[0.015, 0.15, 0.03]} /><meshStandardMaterial color="#d4d4d4" /></mesh>
+          </group>
         </group>
       </group>
     );
@@ -342,21 +348,33 @@ function SzafkaNaroznaZew({ cab, dekorFront, dekorBody }) {
   const safeW2 = w2 || 0.9;
   const safeD2 = d2 || 0.5;
 
-  const blockAw = w - safeD2;
-  const blockAx = sign * (-w/2 + blockAw/2);
+  const p1W = t; const p1D = d - t; const p1X = sign * (-w/2 + t/2); const p1Z = -t/2;
+  
+  // POPRAWKA MIKRO-SZCZELINY 1mm: Odsuwamy płyty od siebie o 0.001, aby silnik nie migał teksturami na złączach!
+  const p3W = w - safeD2 - t - 0.001; const p3D = t; const p3X = sign * (t/2 - safeD2/2 - 0.0005); const p3Z = -d/2 + t/2;
+  const p4W = t; const p4D = safeW2 - d + t; const p4X = sign * (w/2 - safeD2 + t/2); const p4Z = -safeW2/2 + t/2;
+  const p2W = safeD2 - 2*t; const p2D = t; const p2X = sign * (w/2 - safeD2/2); const p2Z = d/2 - safeW2 + t/2;
 
-  const blockBw = safeD2;
-  const blockBx = sign * (w/2 - blockBw/2);
-  const blockBz = d/2 - safeW2/2;
+  const sAw = w - safeD2 - 0.001; const sAd = d - 2*t; const sAx = sign * (-safeD2/2 + t - 0.0005); const sAz = 0;
+  const sBw = safeD2 - 2*t; const sBd = safeW2 - 2*t; const sBx = sign * (w/2 - safeD2/2); const sBz = d/2 - safeW2/2;
 
   return (
     <group position={[0, baseH, 0]}>
       {/* KORPUS PIONOWY */}
       <group position={[0, sideY, 0]}>
-        <mesh position={[-sign * (w/2 - t/2), 0, 0]}><boxGeometry args={[t, sideH, d]} /><PłytaMaterial dekor={dekorBody} w={d} h={sideH} /></mesh>
-        <mesh position={[blockBx, 0, d/2 - safeW2 + t/2]}><boxGeometry args={[blockBw, sideH, t]} /><PłytaMaterial dekor={dekorBody} w={blockBw} h={sideH} /></mesh>
-        <mesh position={[blockAx, 0, -d/2 + t/2]}><boxGeometry args={[blockAw, sideH, t]} /><PłytaMaterial dekor={dekorBody} w={blockAw} h={sideH} /></mesh>
-        <mesh position={[sign * (w/2 - safeD2 + t/2), 0, d/2 - safeW2/2 - d/2]}><boxGeometry args={[t, sideH, safeW2 - d]} /><PłytaMaterial dekor={dekorBody} w={safeW2 - d} h={sideH} /></mesh>
+        <mesh position={[p1X, 0, p1Z]}><boxGeometry args={[p1W, sideH, p1D]} /><PłytaMaterial dekor={dekorBody} w={p1D} h={sideH} /></mesh>
+        <mesh position={[p2X, 0, p2Z]}><boxGeometry args={[p2W, sideH, p2D]} /><PłytaMaterial dekor={dekorBody} w={p2W} h={sideH} /></mesh>
+        
+        <group position={[p3X, 0, p3Z]}>
+          <mesh position={[0, 0, t/2 - 0.001]}><boxGeometry args={[p3W, sideH, 0.002]} /><meshStandardMaterial color="#f8f8f8" roughness={0.8} /></mesh>
+          <mesh position={[0, 0, -0.001]}><boxGeometry args={[p3W, sideH, t - 0.002]} /><MaterialPilśni /></mesh>
+        </group>
+        
+        {/* POPRAWKA: Odwrócona płyta HDF i biały środek ramienia 2, uwzględniająca odbicie lustrzane szafki */}
+        <group position={[p4X, 0, p4Z]}>
+          <mesh position={[sign*(t/2 - 0.001), 0, 0]}><boxGeometry args={[0.002, sideH, p4D]} /><meshStandardMaterial color="#f8f8f8" roughness={0.8} /></mesh>
+          <mesh position={[-sign*0.001, 0, 0]}><boxGeometry args={[t - 0.002, sideH, p4D]} /><MaterialPilśni /></mesh>
+        </group>
       </group>
 
       {/* PÓŁKI I WIEŃCE */}
@@ -366,21 +384,42 @@ function SzafkaNaroznaZew({ cab, dekorFront, dekorBody }) {
         h - t/2
       ].map((y, idx) => (
         <group key={idx} position={[0, y, 0]}>
-          <mesh position={[blockAx, 0, 0]}><boxGeometry args={[blockAw, t, d]} /><PłytaMaterial dekor={dekorBody} w={blockAw} h={d} rotate /></mesh>
-          <mesh position={[blockBx, 0, blockBz]}><boxGeometry args={[blockBw, t, safeW2]} /><PłytaMaterial dekor={dekorBody} w={blockBw} h={safeW2} rotate /></mesh>
+          <mesh position={[sAx, 0, sAz]}><boxGeometry args={[sAw, t, sAd]} /><PłytaMaterial dekor={dekorBody} w={sAw} h={sAd} rotate={true} /></mesh>
+          <mesh position={[sBx, 0, sBz]}><boxGeometry args={[sBw, t, sBd]} /><PłytaMaterial dekor={dekorBody} w={sBw} h={sBd} rotate={false} /></mesh>
         </group>
       ))}
 
       <AnimatedCornerDoorsZew w={w} d={d} w2={safeW2} d2={safeD2} h={h} t={t} gap={0.002} dekorFront={dekorFront} isRight={isRight} />
 
       <group position={[0, -baseH/2, 0]}>
+        {(() => {
+          const recess = t + 0.05; 
+          
+          const s1W = w - recess - t;
+          const s1X = sign * (-w/2 + s1W/2);
+          const s1Z = d/2 - recess - t/2;
+
+          const s2L = safeW2 - recess;
+          const s2X = sign * (w/2 - recess - t/2);
+          const s2Z = d/2 - safeW2 + s2L/2;
+
+          return (
+            <>
+              <mesh position={[s1X, 0, s1Z]}><boxGeometry args={[s1W, baseH, t]} /><PłytaMaterial dekor={dekorBody} w={s1W} h={baseH} rotate /></mesh>
+              <mesh position={[s2X, 0, s2Z]}><boxGeometry args={[t, baseH, s2L]} /><PłytaMaterial dekor={dekorBody} w={s2L} h={baseH} rotate /></mesh>
+            </>
+          );
+        })()}
+
         {baseType === 'nozki_regulowane' && (
           <>
             <group position={[-sign*(w/2 - 0.05), 0, d/2 - 0.15]}><NozkaRegulowana height={baseH} /></group>
-            <group position={[sign*(w/2 - 0.05), 0, d/2 - 0.15]}><NozkaRegulowana height={baseH} /></group>
+            <group position={[sign*(w/2 - 0.15), 0, d/2 - 0.15]}><NozkaRegulowana height={baseH} /></group>
+            
             <group position={[-sign*(w/2 - 0.05), 0, -d/2 + 0.05]}><NozkaRegulowana height={baseH} /></group>
             <group position={[sign*(w/2 - safeD2 + 0.05), 0, -d/2 + 0.05]}><NozkaRegulowana height={baseH} /></group>
-            <group position={[sign*(w/2 - 0.05), 0, d/2 - safeW2 + 0.05]}><NozkaRegulowana height={baseH} /></group>
+            
+            <group position={[sign*(w/2 - 0.15), 0, d/2 - safeW2 + 0.05]}><NozkaRegulowana height={baseH} /></group>
             <group position={[sign*(w/2 - safeD2 + 0.05), 0, d/2 - safeW2 + 0.05]}><NozkaRegulowana height={baseH} /></group>
           </>
         )}
@@ -1085,6 +1124,7 @@ export default function App() {
         let rD = 0; let cD = 0;
         runCabinets.forEach((cab) => {
           const isCorner = cab.type === 'naroznik';
+          const isOuterCorner = cab.type === 'naroznik_zew';
           const effectiveD = isCorner ? 0.5 : cab.d;
           const zOffset = worktopDepth - 0.03 - (effectiveD / 2);
 
@@ -1103,6 +1143,26 @@ export default function App() {
             else { cur.rotateY(Math.PI / 2); cD -= 0.07; }
             cur.translateX(safeW2 - 0.53 + worktopDepth);
             rD += cab.w + safeW2 - 0.5;
+          } else if (isOuterCorner) {
+            // NOWOŚĆ: Precyzyjna matematyka wektorowa dla narożnika zewnętrznego
+            const isRight = cab.cornerSide === 'prawy';
+            const safeW2 = cab.w2 || 0.9;
+            const safeD2 = cab.d2 || 0.5;
+
+            cur.translateX(-cab.w / 2); // Cofnij wirtualny kursor do środka szafki
+            
+            // Przejdź na linię pleców nowego rzędu
+            if (isRight) cur.translateX(cab.w / 2 - safeD2);
+            else cur.translateX(-cab.w / 2 + safeD2);
+
+            // Przejdź na koniec drugiego ramienia
+            cur.translateZ(zOffset + cab.d / 2 - safeW2);
+
+            // Obróć wirtualny kursor o 90 stopni, żeby reszta rzędu szła w nowym kierunku
+            if (isRight) cur.rotateY(-Math.PI / 2);
+            else cur.rotateY(Math.PI / 2);
+            
+            rD += cab.w + safeW2; 
           } else {
             cur.translateX(cab.w / 2);
             rD += cab.w;
@@ -2011,7 +2071,8 @@ export default function App() {
                     <label>Szerokość sekcji {['naroznik', 'naroznik_zew'].includes(activeCab.type) && '(Ramię 1)'}: <b>
                       {['naroznik', 'naroznik_zew'].includes(activeCab.type) ? Math.round((activeCab.w - 0.5 + (activeCab.d2 || 0.5)) * 100) : Math.round(activeCab.w * 100)} cm
                     </b></label>
-                    {['naroznik', 'naroznik_zew'].includes(activeCab.type) && <span style={{ fontSize: '11px', color: '#d35400', fontWeight: 'bold' }}>Front: {Math.round((activeCab.w - 0.5)*100)} cm</span>}
+                    {activeCab.type === 'naroznik' && <span style={{ fontSize: '11px', color: '#d35400', fontWeight: 'bold' }}>Front: {Math.round((activeCab.w - 0.5)*100)} cm</span>}
+                    {activeCab.type === 'naroznik_zew' && <span style={{ fontSize: '11px', color: '#d35400', fontWeight: 'bold' }}>Front zew: {Math.round((activeCab.w - 0.02)*100)} cm</span>}
                   </div>
                   <input type="range" min="0.15" max="1.5" step="0.01" 
                     value={['naroznik', 'naroznik_zew'].includes(activeCab.type) ? activeCab.w - 0.5 + (activeCab.d2 || 0.5) : activeCab.w} 
@@ -2038,7 +2099,8 @@ export default function App() {
                         <div style={{ marginBottom: '15px' }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '4px' }}>
                             <label>Szerokość (Ramię 2): <b>{Math.round(((activeCab.w2||0.9) - 0.5 + activeCab.d)*100)} cm</b></label>
-                            <span style={{ fontSize: '11px', color: '#d35400', fontWeight: 'bold' }}>Front: {Math.round(((activeCab.w2||0.9) - 0.5)*100)} cm</span>
+                            {activeCab.type === 'naroznik' && <span style={{ fontSize: '11px', color: '#d35400', fontWeight: 'bold' }}>Front: {Math.round(((activeCab.w2||0.9) - 0.5)*100)} cm</span>}
+                            {activeCab.type === 'naroznik_zew' && <span style={{ fontSize: '11px', color: '#d35400', fontWeight: 'bold' }}>Front zew: {Math.round(((activeCab.w2||0.9) - 0.02)*100)} cm</span>}
                           </div>
                           <input type="range" min="0.5" max="1.5" step="0.01" value={(activeCab.w2||0.9) - 0.5 + activeCab.d} onChange={(e) => updateActiveCab({w2: parseFloat(e.target.value) - activeCab.d + 0.5})} style={{ width: '100%' }} />
                         </div>
