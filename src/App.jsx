@@ -1144,23 +1144,24 @@ export default function App() {
             cur.translateX(safeW2 - 0.53 + worktopDepth);
             rD += cab.w + safeW2 - 0.5;
           } else if (isOuterCorner) {
-            // NOWOŚĆ: Precyzyjna matematyka wektorowa dla narożnika zewnętrznego
+            // PERFEKCYJNA GEOMETRIA: Szafka idealnie licuje się z drugim ramieniem
             const isRight = cab.cornerSide === 'prawy';
             const safeW2 = cab.w2 || 0.9;
-            const safeD2 = cab.d2 || 0.5;
-
-            cur.translateX(-cab.w / 2); // Cofnij wirtualny kursor do środka szafki
+            const WTD = worktopDepth - 0.03; // Dystans do krawędzi frontu
             
-            // Przejdź na linię pleców nowego rzędu
-            if (isRight) cur.translateX(cab.w / 2 - safeD2);
-            else cur.translateX(-cab.w / 2 + safeD2);
-
-            // Przejdź na koniec drugiego ramienia
-            cur.translateZ(zOffset + cab.d / 2 - safeW2);
-
-            // Obróć wirtualny kursor o 90 stopni, żeby reszta rzędu szła w nowym kierunku
-            if (isRight) cur.rotateY(-Math.PI / 2);
-            else cur.rotateY(Math.PI / 2);
+            cur.translateX(-cab.w / 2);
+            
+            if (isRight) {
+              cur.translateX(cab.w - WTD); 
+              cur.translateZ(WTD - safeW2);
+              // POPRAWKA: Prawy narożnik zewnętrzny patrzy na zewnątrz (+X), a nie do środka!
+              cur.rotateY(Math.PI / 2); 
+            } else {
+              cur.translateX(WTD);
+              cur.translateZ(WTD - safeW2);
+              // POPRAWKA: Lewy narożnik patrzy w stronę -X
+              cur.rotateY(-Math.PI / 2); 
+            }
             
             rD += cab.w + safeW2; 
           } else {
@@ -1179,6 +1180,7 @@ export default function App() {
 
       runCabinets.forEach((cab) => {
         const isCorner = cab.type === 'naroznik';
+        const isOuterCorner = cab.type === 'naroznik_zew';
         const effectiveD = isCorner ? 0.5 : cab.d;
         
         const zOffset = worktopDepth - 0.03 - (effectiveD / 2);
@@ -1214,6 +1216,24 @@ export default function App() {
           
           localCursor.translateX(safeW2 - 0.53 + worktopDepth);
           runDist += cab.w + safeW2 - 0.5;
+        } else if (isOuterCorner) {
+          const isRight = cab.cornerSide === 'prawy';
+          const safeW2 = cab.w2 || 0.9;
+          const WTD = worktopDepth - 0.03;
+
+          localCursor.translateX(-cab.w / 2);
+          
+          if (isRight) {
+            localCursor.translateX(cab.w - WTD);
+            localCursor.translateZ(WTD - safeW2);
+            localCursor.rotateY(Math.PI / 2);
+          } else {
+            localCursor.translateX(WTD);
+            localCursor.translateZ(WTD - safeW2);
+            localCursor.rotateY(-Math.PI / 2);
+          }
+          
+          runDist += cab.w + safeW2;
         } else {
           localCursor.translateX(cab.w / 2);
           runDist += cab.w;
