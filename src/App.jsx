@@ -348,15 +348,40 @@ function SzafkaNaroznaZew({ cab, dekorFront, dekorBody }) {
   const safeW2 = w2 || 0.9;
   const safeD2 = d2 || 0.5;
 
-  const p1W = t; const p1D = d - t; const p1X = sign * (-w/2 + t/2); const p1Z = -t/2;
-  
-  // POPRAWKA MIKRO-SZCZELINY 1mm: Odsuwamy płyty od siebie o 0.001, aby silnik nie migał teksturami na złączach!
-  const p3W = w - safeD2 - t - 0.001; const p3D = t; const p3X = sign * (t/2 - safeD2/2 - 0.0005); const p3Z = -d/2 + t/2;
-  const p4W = t; const p4D = safeW2 - d + t; const p4X = sign * (w/2 - safeD2 + t/2); const p4Z = -safeW2/2 + t/2;
-  const p2W = safeD2 - 2*t; const p2D = t; const p2X = sign * (w/2 - safeD2/2); const p2Z = d/2 - safeW2 + t/2;
+  const tB = 0.003; // Grubość cienkiej pilśni HDF
 
-  const sAw = w - safeD2 - 0.001; const sAd = d - 2*t; const sAx = sign * (-safeD2/2 + t - 0.0005); const sAz = 0;
-  const sBw = safeD2 - 2*t; const sBd = safeW2 - 2*t; const sBx = sign * (w/2 - safeD2/2); const sBz = d/2 - safeW2/2;
+  // 1. PIONY KORPUSU (Ściany boczne L-kształtnej szafki)
+  const p1W = t; 
+  const p1D = d - t; 
+  const p1X = sign * (-w/2 + t/2); 
+  const p1Z = -t/2;
+
+  const p2W = safeD2 - t; 
+  const p2D = t; 
+  const p2X = sign * (w/2 - safeD2/2 - t/2); 
+  const p2Z = d/2 - safeW2 + t/2;
+
+  // 2. PLECY (Wewnętrzna część L-kształtu z 3mm pilśni)
+  const p3W = w - safeD2 - t; 
+  const p3D = tB; 
+  const p3X = sign * (t/2 - safeD2/2); 
+  const p3Z = -d/2 + tB/2; 
+
+  const p4W = tB; 
+  const p4D = safeW2 - d - t + tB; 
+  const p4X = sign * (w/2 - safeD2 + tB/2); 
+  const p4Z = (tB + t - safeW2)/2; 
+
+  // 3. PÓŁKI I WIEŃCE (Złożone z dwóch prostokątów wypełniających w 100% obrys pleców)
+  const sAw = w - 2*t; 
+  const sAd = d - t - tB; 
+  const sAx = 0; 
+  const sAz = (tB - t)/2;
+
+  const sBw = safeD2 - t - tB; 
+  const sBd = safeW2 - d - t + tB; 
+  const sBx = sign * (w/2 - safeD2/2 - t/2 + tB/2); 
+  const sBz = (tB + t - safeW2)/2;
 
   return (
     <group position={[0, baseH, 0]}>
@@ -365,15 +390,16 @@ function SzafkaNaroznaZew({ cab, dekorFront, dekorBody }) {
         <mesh position={[p1X, 0, p1Z]}><boxGeometry args={[p1W, sideH, p1D]} /><PłytaMaterial dekor={dekorBody} w={p1D} h={sideH} /></mesh>
         <mesh position={[p2X, 0, p2Z]}><boxGeometry args={[p2W, sideH, p2D]} /><PłytaMaterial dekor={dekorBody} w={p2W} h={sideH} /></mesh>
         
+        {/* PLECY 1 - Cieniutka pilśnia (biała w środku, brązowa na zewnątrz) */}
         <group position={[p3X, 0, p3Z]}>
-          <mesh position={[0, 0, t/2 - 0.001]}><boxGeometry args={[p3W, sideH, 0.002]} /><meshStandardMaterial color="#f8f8f8" roughness={0.8} /></mesh>
-          <mesh position={[0, 0, -0.001]}><boxGeometry args={[p3W, sideH, t - 0.002]} /><MaterialPilśni /></mesh>
+          <mesh position={[0, 0, 0.0005]}><boxGeometry args={[p3W, sideH, 0.002]} /><meshStandardMaterial color="#f8f8f8" roughness={0.8} /></mesh>
+          <mesh position={[0, 0, -0.001]}><boxGeometry args={[p3W, sideH, 0.001]} /><MaterialPilśni /></mesh>
         </group>
         
-        {/* POPRAWKA: Odwrócona płyta HDF i biały środek ramienia 2, uwzględniająca odbicie lustrzane szafki */}
+        {/* PLECY 2 - Odwrócona, cienka pilśnia dopasowana do kąta */}
         <group position={[p4X, 0, p4Z]}>
-          <mesh position={[sign*(t/2 - 0.001), 0, 0]}><boxGeometry args={[0.002, sideH, p4D]} /><meshStandardMaterial color="#f8f8f8" roughness={0.8} /></mesh>
-          <mesh position={[-sign*0.001, 0, 0]}><boxGeometry args={[t - 0.002, sideH, p4D]} /><MaterialPilśni /></mesh>
+          <mesh position={[sign * 0.0005, 0, 0]}><boxGeometry args={[0.002, sideH, p4D]} /><meshStandardMaterial color="#f8f8f8" roughness={0.8} /></mesh>
+          <mesh position={[sign * -0.001, 0, 0]}><boxGeometry args={[0.001, sideH, p4D]} /><MaterialPilśni /></mesh>
         </group>
       </group>
 
@@ -406,7 +432,7 @@ function SzafkaNaroznaZew({ cab, dekorFront, dekorBody }) {
           return (
             <>
               <mesh position={[s1X, 0, s1Z]}><boxGeometry args={[s1W, baseH, t]} /><PłytaMaterial dekor={dekorBody} w={s1W} h={baseH} rotate /></mesh>
-              <mesh position={[s2X, 0, s2Z]}><boxGeometry args={[t, baseH, s2L]} /><PłytaMaterial dekor={dekorBody} w={s2L} h={baseH} rotate /></mesh>
+              <mesh position={[s2X, 0, s2Z]}><boxGeometry args={[t, baseH, s2L]} /><PłytaMaterial dekor={dekorBody} w={s2L} h={baseH} rotate={false} /></mesh>
             </>
           );
         })()}
@@ -1006,7 +1032,7 @@ function CabinetError({ cab, isFlipped, polyNodes, showWorktop, worktopDepth, ne
                <boxGeometry args={[(cab.d2 || 0.5), h, (cab.w2 || 0.9) - 0.5]} />
              </mesh>
            )}
-           {/* NOWOŚĆ: Siatka błędu dla narożnika zewnętrznego */}
+           {/* POPRAWKA: Prawidłowe wymiary dla obrysu błędu narożnika zewnętrznego */}
            {isOuterCorner && (
              <mesh material={errorMat} position={[(cab.cornerSide === 'prawy' ? 1 : -1) * (cab.w/2 - (cab.d2 || 0.5)/2), 0, cab.d/2 - (cab.w2 || 0.9)/2]}>
                <boxGeometry args={[(cab.d2 || 0.5), h, (cab.w2 || 0.9) - cab.d]} />
@@ -1282,6 +1308,10 @@ export default function App() {
              const sign = cab.cornerSide === 'prawy' ? 1 : -1;
              checkPoints.push(new THREE.Vector3(sign * (hw - (cab.d2 || 0.5)), 0, (cab.w2 || 0.9) - hd));
              checkPoints.push(new THREE.Vector3(sign * hw, 0, (cab.w2 || 0.9) - hd));
+          } else if (cab.type === 'naroznik_zew') {
+             const sign = cab.cornerSide === 'prawy' ? 1 : -1;
+             checkPoints.push(new THREE.Vector3(sign * hw, 0, hd - (cab.w2 || 0.9)));
+             checkPoints.push(new THREE.Vector3(sign * (hw - (cab.d2 || 0.5)), 0, hd - (cab.w2 || 0.9)));
           }
 
           if (showWorktopGlobal && cab.hasWorktop && cab.type !== 'puste') {
@@ -2405,6 +2435,12 @@ export default function App() {
                                       new THREE.Vector3(flipMult * (sign * (hw - (cab.d2 || 0.5))), 0, flipMult * ((cab.w2 || 0.9) - hd)),
                                       new THREE.Vector3(flipMult * (sign * hw), 0, flipMult * ((cab.w2 || 0.9) - hd))
                                   );
+                                } else if (cab.type === 'naroznik_zew') {
+                                  const sign = cab.cornerSide === 'prawy' ? 1 : -1;
+                                  strictPoints.push(
+                                      new THREE.Vector3(flipMult * (sign * hw), 0, flipMult * (hd - (cab.w2 || 0.9))),
+                                      new THREE.Vector3(flipMult * (sign * (hw - (cab.d2 || 0.5))), 0, flipMult * (hd - (cab.w2 || 0.9)))
+                                  );
                                 }
                                 
                                 if (showWorktopGlobal && cab.hasWorktop && cab.type !== 'puste') {
@@ -2427,6 +2463,28 @@ export default function App() {
                                         new THREE.Vector3(flipMult * (cx2 + hwd), 0, flipMult * (cz2 - w2/2)),
                                         new THREE.Vector3(flipMult * (cx2 - hwd), 0, flipMult * (cz2 + w2/2)),
                                         new THREE.Vector3(flipMult * (cx2 - hwd), 0, flipMult * (cz2 - w2/2))
+                                     );
+                                  } else if (cab.type === 'naroznik_zew') {
+                                     const sign = cab.cornerSide === 'prawy' ? 1 : -1;
+                                     const w1 = cab.w - (cab.d2 || 0.5);
+                                     const cx1 = sign * (-cab.w/2 + w1/2);
+                                     const cz1 = (worktopDepth - cab.d)/2;
+                                     strictPoints.push(
+                                        new THREE.Vector3(flipMult * (cx1 + w1/2), 0, flipMult * (cz1 + hwd)),
+                                        new THREE.Vector3(flipMult * (cx1 + w1/2), 0, flipMult * (cz1 - hwd)),
+                                        new THREE.Vector3(flipMult * (cx1 - w1/2), 0, flipMult * (cz1 + hwd)),
+                                        new THREE.Vector3(flipMult * (cx1 - w1/2), 0, flipMult * (cz1 - hwd))
+                                     );
+                                     const w2 = cab.d2 || 0.5;
+                                     const d2 = cab.w2 || 0.9;
+                                     const cx2 = sign * (cab.w/2 - w2/2);
+                                     const cz2 = cab.d/2 - d2/2 + (worktopDepth - cab.d)/2;
+                                     const hwd2 = d2/2;
+                                     strictPoints.push(
+                                        new THREE.Vector3(flipMult * (cx2 + w2/2), 0, flipMult * (cz2 + hwd2)),
+                                        new THREE.Vector3(flipMult * (cx2 + w2/2), 0, flipMult * (cz2 - hwd2)),
+                                        new THREE.Vector3(flipMult * (cx2 - w2/2), 0, flipMult * (cz2 + hwd2)),
+                                        new THREE.Vector3(flipMult * (cx2 - w2/2), 0, flipMult * (cz2 - hwd2))
                                      );
                                   } else {
                                      const wtCenterZ = (cab.d / 2 + 0.03) - hwd;
