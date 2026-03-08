@@ -892,7 +892,7 @@ function CabinetHighlight({ cab, isFlipped, showWorktop, worktopDepth, nextIsFli
              </mesh>
            )}
            {isOuterCorner && (
-             <mesh material={mat} position={[(cab.cornerSide === 'prawy' ? 1 : -1) * (cab.w/2 - (cab.d2 || 0.5)/2), 0, cab.d/2 - (cab.w2 || 0.9)/2]}>
+             <mesh material={mat} position={[(cab.cornerSide === 'prawy' ? 1 : -1) * (cab.w/2 - (cab.d2 || 0.5)/2), 0, -(cab.w2 || 0.9)/2]}>
                <boxGeometry args={[(cab.d2 || 0.5) + 0.02, h + 0.02, (cab.w2 || 0.9) - cab.d + 0.02]} />
              </mesh>
            )}
@@ -920,7 +920,7 @@ function CabinetHighlight({ cab, isFlipped, showWorktop, worktopDepth, nextIsFli
                  <mesh position={[(cab.cornerSide==='prawy'?1:-1) * (-cab.w/2 + (cab.w - (cab.d2||0.5))/2), 0, (worktopDepth - cab.d)/2]} material={mat}>
                    <boxGeometry args={[cab.w - (cab.d2||0.5) + 0.02, 0.038 + 0.02, worktopDepth + 0.02]} />
                  </mesh>
-                 <mesh position={[(cab.cornerSide==='prawy'?1:-1) * (cab.w/2 - (cab.d2||0.5)/2), 0, cab.d/2 - (cab.w2||0.9)/2 + (worktopDepth - cab.d)/2]} material={mat}>
+                 <mesh position={[(cab.cornerSide==='prawy'?1:-1) * (cab.w/2 - (cab.d2||0.5)/2), 0, -(cab.w2||0.9)/2 + (worktopDepth - cab.d)/2]} material={mat}>
                    <boxGeometry args={[(cab.d2||0.5) + (worktopDepth - cab.d) + 0.02, 0.038 + 0.02, (cab.w2||0.9) + (worktopDepth - cab.d) + 0.02]} />
                  </mesh>
              </group>
@@ -1034,7 +1034,7 @@ function CabinetError({ cab, isFlipped, polyNodes, showWorktop, worktopDepth, ne
            )}
            {/* POPRAWKA: Prawidłowe wymiary dla obrysu błędu narożnika zewnętrznego */}
            {isOuterCorner && (
-             <mesh material={errorMat} position={[(cab.cornerSide === 'prawy' ? 1 : -1) * (cab.w/2 - (cab.d2 || 0.5)/2), 0, cab.d/2 - (cab.w2 || 0.9)/2]}>
+             <mesh material={errorMat} position={[(cab.cornerSide === 'prawy' ? 1 : -1) * (cab.w/2 - (cab.d2 || 0.5)/2), 0, -(cab.w2 || 0.9)/2]}>
                <boxGeometry args={[(cab.d2 || 0.5), h, (cab.w2 || 0.9) - cab.d]} />
              </mesh>
            )}
@@ -1060,7 +1060,7 @@ function CabinetError({ cab, isFlipped, polyNodes, showWorktop, worktopDepth, ne
                  <mesh position={[(cab.cornerSide==='prawy'?1:-1) * (-cab.w/2 + (cab.w - (cab.d2||0.5))/2), 0, (worktopDepth - cab.d)/2]} material={errorMat}>
                    <boxGeometry args={[cab.w - (cab.d2||0.5), 0.038, worktopDepth]} />
                  </mesh>
-                 <mesh position={[(cab.cornerSide==='prawy'?1:-1) * (cab.w/2 - (cab.d2||0.5)/2), 0, cab.d/2 - (cab.w2||0.9)/2 + (worktopDepth - cab.d)/2]} material={errorMat}>
+                 <mesh position={[(cab.cornerSide==='prawy'?1:-1) * (cab.w/2 - (cab.d2||0.5)/2), 0, -(cab.w2||0.9)/2 + (worktopDepth - cab.d)/2]} material={errorMat}>
                    <boxGeometry args={[(cab.d2||0.5) + (worktopDepth - cab.d), 0.038, (cab.w2||0.9) + (worktopDepth - cab.d)]} />
                  </mesh>
              </group>
