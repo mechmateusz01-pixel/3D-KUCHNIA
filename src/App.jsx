@@ -1364,81 +1364,105 @@ export default function App() {
           else if (cornersBefore === 2) isFlippedLocal = !isFlippedLocal; 
           const flipMult = isFlippedLocal ? -1 : 1;
 
-          const checkPoints = [
-            new THREE.Vector3(0, 0, 0), 
-            new THREE.Vector3(flipMult * hw, 0, flipMult * hd), 
-            new THREE.Vector3(flipMult * -hw, 0, flipMult * hd),
-            new THREE.Vector3(flipMult * hw, 0, flipMult * -hd), 
-            new THREE.Vector3(flipMult * -hw, 0, flipMult * -hd),
-            new THREE.Vector3(flipMult * hw, 0, 0),
-            new THREE.Vector3(flipMult * -hw, 0, 0),
-            new THREE.Vector3(0, 0, flipMult * hd),
-            new THREE.Vector3(0, 0, flipMult * -hd)
-          ];
-          
-          if (cab.type === 'naroznik') {
-             const sign = cab.cornerSide === 'prawy' ? 1 : -1;
-             checkPoints.push(new THREE.Vector3(flipMult * sign * (hw - (cab.d2 || 0.5)), 0, flipMult * ((cab.w2 || 0.9) - hd)));
-             checkPoints.push(new THREE.Vector3(flipMult * sign * hw, 0, flipMult * ((cab.w2 || 0.9) - hd)));
-          } else if (cab.type === 'naroznik_zew') {
-             const sign = cab.cornerSide === 'prawy' ? 1 : -1;
-             checkPoints.push(new THREE.Vector3(flipMult * sign * hw, 0, flipMult * (hd - (cab.w2 || 0.9))));
-             checkPoints.push(new THREE.Vector3(flipMult * sign * (hw - (cab.d2 || 0.5)), 0, flipMult * (hd - (cab.w2 || 0.9))));
-          }
+          let checkPoints = [];
 
-          // PRZYWRÓCONE KOLIZJE BLATU - Skalibrowane do milimetra z geometrią 3D
-          if (showWorktopGlobal && cab.hasWorktop && cab.type !== 'puste') {
-             const WTD = worktopDepth;
+          // POMOCNICZA FUNKCJA: Tworzy punkty kontrolne IDEALNIE zgodne z czerwoną aurą
+          const addExactBox = (cx, cz, wBox, dBox) => {
+             // OSTATECZNA SYNCHRONIZACJA Z SHADEREM
+             // Czerwone bryły błędów na karcie graficznej są pomniejszone o 2mm (0.002).
+             // Zmniejszamy punkty JS nieco bardziej (margines błędu 0.005), co da 100% synchronizacji i usunie błąd styku!
+             const hx = (wBox - 0.005) / 2;
+             const hz = (dBox - 0.005) / 2;
+             if (hx > 0 && hz > 0) {
+                 checkPoints.push(
+                     new THREE.Vector3(flipMult * (cx + hx), 0, flipMult * (cz + hz)),
+                     new THREE.Vector3(flipMult * (cx - hx), 0, flipMult * (cz + hz)),
+                     new THREE.Vector3(flipMult * (cx + hx), 0, flipMult * (cz - hz)),
+                     new THREE.Vector3(flipMult * (cx - hx), 0, flipMult * (cz - hz))
+                 );
+             }
+          };
+          
+          if (cab.type === 'naroznik_zew') {
+             const sign = cab.cornerSide === 'prawy' ? 1 : -1;
+             
+             // 1. Główny korpus
+             addExactBox(0, 0, cab.w, cab.d);
+             
+             // 2. Ramię boczne
+             const d2 = cab.d2 || 0.5;
+             const w2 = cab.w2 || 0.9;
+             addExactBox(sign * (cab.w / 2 - d2 / 2), -w2 / 2, d2, w2 - cab.d);
+
+             // 3. Blaty
+             if (showWorktopGlobal && cab.hasWorktop) {
+                const WTD = Math.max(0.1, worktopDepth);
+                
+                // Blat Ramię 1
+                const w1_wt = Math.max(0.01, cab.w + 0.03 - WTD);
+                const cx1 = sign * (-cab.w / 2 + w1_wt / 2);
+                const cz1 = cab.d / 2 + 0.03 - WTD / 2;
+                addExactBox(cx1, cz1, w1_wt, WTD);
+
+                // Blat Ramię 2
+                const w2_wt = WTD;
+                const cx2 = sign * (cab.w / 2 + 0.03 - WTD / 2);
+                const d2_wt = Math.max(0.01, (cab.w2 || 0.9) + 0.03);
+                const cz2 = cab.d / 2 + 0.03 - d2_wt / 2;
+                addExactBox(cx2, cz2, w2_wt, d2_wt);
+             }
+          } else {
+             // Standardowy kod dla reszty szafek
+             checkPoints = [
+               new THREE.Vector3(0, 0, 0), 
+               new THREE.Vector3(flipMult * hw, 0, flipMult * hd), 
+               new THREE.Vector3(flipMult * -hw, 0, flipMult * hd),
+               new THREE.Vector3(flipMult * hw, 0, flipMult * -hd), 
+               new THREE.Vector3(flipMult * -hw, 0, flipMult * -hd),
+               new THREE.Vector3(flipMult * hw, 0, 0),
+               new THREE.Vector3(flipMult * -hw, 0, 0),
+               new THREE.Vector3(0, 0, flipMult * hd),
+               new THREE.Vector3(0, 0, flipMult * -hd)
+             ];
+             
              if (cab.type === 'naroznik') {
                 const sign = cab.cornerSide === 'prawy' ? 1 : -1;
-                const w1_wt = cab.w + WTD - 0.53;
-                const cx1 = sign * (WTD - 0.53) / 2;
-                const cz1 = hd + 0.03 - WTD / 2;
-                checkPoints.push(
-                   new THREE.Vector3(flipMult * (cx1 + w1_wt/2), 0, flipMult * (cz1 + WTD/2)),
-                   new THREE.Vector3(flipMult * (cx1 + w1_wt/2), 0, flipMult * (cz1 - WTD/2)),
-                   new THREE.Vector3(flipMult * (cx1 - w1_wt/2), 0, flipMult * (cz1 + WTD/2)),
-                   new THREE.Vector3(flipMult * (cx1 - w1_wt/2), 0, flipMult * (cz1 - WTD/2))
-                );
-                const w2_wt = 2 * WTD + (cab.w2 || 0.9) - cab.d - 0.59;
-                const cx2 = sign * (hw - 0.53 + WTD / 2);
-                const cz2 = WTD + (cab.w2 || 0.9) / 2 - 0.265;
-                checkPoints.push(
-                   new THREE.Vector3(flipMult * (cx2 + WTD/2), 0, flipMult * (cz2 + w2_wt/2)),
-                   new THREE.Vector3(flipMult * (cx2 + WTD/2), 0, flipMult * (cz2 - w2_wt/2)),
-                   new THREE.Vector3(flipMult * (cx2 - WTD/2), 0, flipMult * (cz2 + w2_wt/2)),
-                   new THREE.Vector3(flipMult * (cx2 - WTD/2), 0, flipMult * (cz2 - w2_wt/2))
-                );
-             } else if (cab.type === 'naroznik_zew') {
-                const sign = cab.cornerSide === 'prawy' ? 1 : -1;
-                const w1_wt = Math.max(0.01, cab.w + 0.03 - WTD);
-                const cx1 = sign * (-hw + w1_wt/2);
-                const cz1 = hd + 0.03 - WTD/2;
-                checkPoints.push(
-                   new THREE.Vector3(flipMult * (cx1 + w1_wt/2), 0, flipMult * (cz1 + WTD/2)),
-                   new THREE.Vector3(flipMult * (cx1 + w1_wt/2), 0, flipMult * (cz1 - WTD/2)),
-                   new THREE.Vector3(flipMult * (cx1 - w1_wt/2), 0, flipMult * (cz1 + WTD/2)),
-                   new THREE.Vector3(flipMult * (cx1 - w1_wt/2), 0, flipMult * (cz1 - WTD/2))
-                );
-                const w2_wt = WTD;
-                const cx2 = sign * (hw + 0.03 - WTD/2);
-                const d2_wt = Math.max(0.01, (cab.w2 || 0.9) + 0.03);
-                const cz2 = hd + 0.03 - d2_wt/2;
-                checkPoints.push(
-                   new THREE.Vector3(flipMult * (cx2 + w2_wt/2), 0, flipMult * (cz2 + d2_wt/2)),
-                   new THREE.Vector3(flipMult * (cx2 + w2_wt/2), 0, flipMult * (cz2 - d2_wt/2)),
-                   new THREE.Vector3(flipMult * (cx2 - w2_wt/2), 0, flipMult * (cz2 + d2_wt/2)),
-                   new THREE.Vector3(flipMult * (cx2 - w2_wt/2), 0, flipMult * (cz2 - d2_wt/2))
-                );
-             } else {
-                const wtFront = hd + 0.03;
-                const wtBack = hd + 0.03 - WTD;
-                checkPoints.push(
-                   new THREE.Vector3(flipMult * hw, 0, flipMult * wtFront),
-                   new THREE.Vector3(flipMult * -hw, 0, flipMult * wtFront),
-                   new THREE.Vector3(flipMult * hw, 0, flipMult * wtBack),
-                   new THREE.Vector3(flipMult * -hw, 0, flipMult * wtBack)
-                );
+                checkPoints.push(new THREE.Vector3(flipMult * sign * (hw - (cab.d2 || 0.5)), 0, flipMult * ((cab.w2 || 0.9) - hd)));
+                checkPoints.push(new THREE.Vector3(flipMult * sign * hw, 0, flipMult * ((cab.w2 || 0.9) - hd)));
+             }
+
+             if (showWorktopGlobal && cab.hasWorktop && cab.type !== 'puste') {
+                const WTD = worktopDepth;
+                if (cab.type === 'naroznik') {
+                   const sign = cab.cornerSide === 'prawy' ? 1 : -1;
+                   const w1_wt = cab.w + WTD - 0.53;
+                   const cx1 = sign * (WTD - 0.53) / 2;
+                   const cz1 = hd + 0.03 - WTD / 2;
+                   checkPoints.push(
+                      new THREE.Vector3(flipMult * (cx1 + w1_wt/2), 0, flipMult * (cz1 + WTD/2)),
+                      new THREE.Vector3(flipMult * (cx1 + w1_wt/2), 0, flipMult * (cz1 - WTD/2)),
+                      new THREE.Vector3(flipMult * (cx1 - w1_wt/2), 0, flipMult * (cz1 + WTD/2)),
+                      new THREE.Vector3(flipMult * (cx1 - w1_wt/2), 0, flipMult * (cz1 - WTD/2))
+                   );
+                   const w2_wt = 2 * WTD + (cab.w2 || 0.9) - cab.d - 0.59;
+                   const cx2 = sign * (hw - 0.53 + WTD / 2);
+                   const cz2 = WTD + (cab.w2 || 0.9) / 2 - 0.265;
+                   checkPoints.push(
+                      new THREE.Vector3(flipMult * (cx2 + WTD/2), 0, flipMult * (cz2 + w2_wt/2)),
+                      new THREE.Vector3(flipMult * (cx2 + WTD/2), 0, flipMult * (cz2 - w2_wt/2)),
+                      new THREE.Vector3(flipMult * (cx2 - WTD/2), 0, flipMult * (cz2 + w2_wt/2)),
+                      new THREE.Vector3(flipMult * (cx2 - WTD/2), 0, flipMult * (cz2 - w2_wt/2))
+                   );
+                } else {
+                   const wtFront = hd + 0.03;
+                   const wtBack = hd + 0.03 - WTD;
+                   checkPoints.push(
+                      new THREE.Vector3(flipMult * hw, 0, flipMult * wtFront),
+                      new THREE.Vector3(flipMult * -hw, 0, flipMult * wtFront),
+                      new THREE.Vector3(flipMult * hw, 0, flipMult * wtBack),
+                      new THREE.Vector3(flipMult * -hw, 0, flipMult * wtBack)
+                   );
+                }
              }
           }
 
