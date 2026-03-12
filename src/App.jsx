@@ -903,51 +903,44 @@ function CabinetHighlight({ cab, isFlipped, showWorktop, worktopDepth, nextIsFli
        {showWorktop && (
          isCorner ? (
            <group position={[0, cab.h + 0.119, 0]} rotation={[0, isFlipped ? Math.PI : 0, 0]}>
-             {(() => {
-                const sign = cab.cornerSide === 'prawy' ? 1 : -1;
-                const WTD = worktopDepth;
-                const w1_wt = cab.w + WTD - 0.53;
-                const cx1 = sign * (WTD - 0.53) / 2;
-                const cz1 = cab.d / 2 + 0.03 - WTD / 2;
-                const w2_wt = 2 * WTD + (cab.w2 || 0.9) - cab.d - 0.59;
-                const cx2 = sign * (cab.w / 2 - 0.53 + WTD / 2);
-                const cz2 = WTD + (cab.w2 || 0.9) / 2 - 0.265;
-                return (
-                  <>
-                     <mesh position={[cx1, 0, cz1]} material={mat}>
-                       <boxGeometry args={[w1_wt + 0.02, 0.038 + 0.02, WTD + 0.02]} />
-                     </mesh>
-                     <mesh
-                       position={[cx2, 0, cz2]}
-                       rotation={[0, (cab.cornerSide === 'prawy' ? -Math.PI / 2 : Math.PI / 2) + (nextIsFlipped ? Math.PI : 0), 0]}
-                       material={mat}
-                     >
-                       <boxGeometry args={[w2_wt + 0.02, 0.038 + 0.02, WTD + 0.02]} />
-                     </mesh>
-                  </>
-                );
-             })()}
+             <>
+                 <mesh position={[(cab.cornerSide==='prawy'?1:-1) * (worktopDepth - 0.5 - 0.03) / 2, 0, (0.5 / 2 + 0.03) - (worktopDepth / 2)]} material={mat}>
+                   <boxGeometry args={[cab.w + (worktopDepth - 0.5 - 0.03) + 0.02, 0.038 + 0.02, worktopDepth + 0.02]} />
+                 </mesh>
+                 <mesh
+                   position={[(cab.cornerSide==='prawy'?1:-1) * (cab.w/2 - 0.5 - 0.03 + worktopDepth/2), 0, (cab.w2||0.9)/2 + 0.015]}
+                   rotation={[0, (cab.cornerSide === 'prawy' ? -Math.PI / 2 : Math.PI / 2) + (nextIsFlipped ? Math.PI : 0), 0]}
+                   material={mat}
+                 >
+                   <boxGeometry args={[(cab.w2||0.9) - 0.5 - 0.03 + 0.02, 0.038 + 0.02, worktopDepth + 0.02]} />
+                 </mesh>
+             </>
            </group>
          ) : isOuterCorner ? (
              <group position={[0, cab.h + 0.119, 0]} rotation={[0, isFlipped ? Math.PI : 0, 0]}>
                  {(() => {
                     const sign = cab.cornerSide === 'prawy' ? 1 : -1;
-                    const WTD = Math.max(0.1, worktopDepth);
-                    const w1_wt = Math.max(0.01, cab.w + 0.03 - WTD);
-                    const cx1 = sign * (-cab.w/2 + w1_wt/2);
-                    const cz1 = cab.d/2 + 0.03 - WTD/2;
+                    const safeW2 = cab.w2 || 0.9;
+                    const safeD2 = cab.d2 || 0.5;
+
+                    // IDEALNA GEOMETRIA (Dopasowana do obrysu szafki, zamiast do globalnego blatu)
+                    const w1_wt = cab.w - safeD2;
+                    const d1_wt = cab.d + 0.03;
+                    const cx1 = sign * (-safeD2 / 2);
+                    const cz1 = 0.015;
+
+                    const w2_wt = safeD2 + 0.03;
+                    const d2_wt = safeW2 + 0.03;
+                    const cx2 = sign * (cab.w / 2 - safeD2 / 2 + 0.015);
+                    const cz2 = cab.d / 2 - safeW2 / 2 + 0.015;
                     
-                    const w2_wt = WTD;
-                    const cx2 = sign * (cab.w/2 + 0.03 - WTD/2);
-                    const d2_wt = Math.max(0.01, (cab.w2 || 0.9) + 0.03);
-                    const cz2 = cab.d/2 + 0.03 - d2_wt/2;
                     return (
                       <>
                          <mesh position={[cx1, 0, cz1]} material={mat}>
-                           <boxGeometry args={[w1_wt + 0.02, 0.038 + 0.02, WTD + 0.02]} />
+                           <boxGeometry args={[w1_wt + 0.02, 0.042, d1_wt + 0.02]} />
                          </mesh>
                          <mesh position={[cx2, 0, cz2]} material={mat}>
-                           <boxGeometry args={[w2_wt + 0.02, 0.038 + 0.02, d2_wt + 0.02]} />
+                           <boxGeometry args={[w2_wt + 0.02, 0.042, d2_wt + 0.02]} />
                          </mesh>
                       </>
                     );
@@ -996,8 +989,10 @@ function CabinetError({ cab, isFlipped, polyNodes, showWorktop, worktopDepth, ne
         void main() {
           vec2 p = vec2(vWorldPos.x, vWorldPos.z);
           
-          // POPRAWKA: Usunięto sztuczne przesuwanie pikseli, które powodowało "krwawienie"
-          // czerwonej poświaty na ściany przy idealnym styku.
+          if (length(uCenter - p) > 0.0) {
+             vec2 dir = normalize(uCenter - p);
+             p = p + dir * 0.003; 
+          }
           
           bool isInside = false;
           
@@ -1053,14 +1048,14 @@ function CabinetError({ cab, isFlipped, polyNodes, showWorktop, worktopDepth, ne
        <group rotation={[0, isFlipped ? Math.PI : 0, 0]}>
          <group position={[0, h/2, 0]}>
            <mesh material={errorMat}>
-             <boxGeometry args={[cab.w - 0.002, h, cab.d - 0.002]} />
+             <boxGeometry args={[cab.w, h, cab.d]} />
            </mesh>
            {isCorner && (
              <mesh material={errorMat} position={[(cab.cornerSide === 'prawy' ? 1 : -1) * (cab.w/2 - 0.5 + (cab.d2 || 0.5)/2), 0, (cab.w2 || 0.9)/2]}>
-               <boxGeometry args={[(cab.d2 || 0.5) - 0.002, h, (cab.w2 || 0.9) - 0.5 - 0.002]} />
+               <boxGeometry args={[(cab.d2 || 0.5), h, (cab.w2 || 0.9) - 0.5]} />
              </mesh>
            )}
-           {/* POPRAWKA: Prawidłowe wymiary dla obrysu błędu narożnika zewnętrznego */}
+           {/* Prawidłowe wymiary dla obrysu błędu narożnika zewnętrznego */}
            {isOuterCorner && (
              <mesh material={errorMat} position={[(cab.cornerSide === 'prawy' ? 1 : -1) * (cab.w/2 - (cab.d2 || 0.5)/2), 0, -(cab.w2 || 0.9)/2]}>
                <boxGeometry args={[(cab.d2 || 0.5) - 0.002, h, (cab.w2 || 0.9) - cab.d - 0.002]} />
@@ -1072,51 +1067,41 @@ function CabinetError({ cab, isFlipped, polyNodes, showWorktop, worktopDepth, ne
        {showWorktop && (
          isCorner ? (
            <group position={[0, cab.h + 0.119, 0]} rotation={[0, isFlipped ? Math.PI : 0, 0]}>
-             {(() => {
-                const sign = cab.cornerSide === 'prawy' ? 1 : -1;
-                const WTD = worktopDepth;
-                const w1_wt = cab.w + WTD - 0.53;
-                const cx1 = sign * (WTD - 0.53) / 2;
-                const cz1 = cab.d / 2 + 0.03 - WTD / 2;
-                const w2_wt = 2 * WTD + (cab.w2 || 0.9) - cab.d - 0.59;
-                const cx2 = sign * (cab.w / 2 - 0.53 + WTD / 2);
-                const cz2 = WTD + (cab.w2 || 0.9) / 2 - 0.265;
-                return (
-                  <>
-                     <mesh position={[cx1, 0, cz1]} material={errorMat}>
-                       <boxGeometry args={[w1_wt - 0.002, 0.038, WTD - 0.002]} />
-                     </mesh>
-                     <mesh
-                       position={[cx2, 0, cz2]}
-                       rotation={[0, (cab.cornerSide === 'prawy' ? -Math.PI / 2 : Math.PI / 2) + (nextIsFlipped ? Math.PI : 0), 0]}
-                       material={errorMat}
-                     >
-                       <boxGeometry args={[w2_wt - 0.002, 0.038, WTD - 0.002]} />
-                     </mesh>
-                  </>
-                );
-             })()}
+             <mesh position={[(cab.cornerSide==='prawy'?1:-1) * (worktopDepth - 0.5 - 0.03) / 2, 0, (0.5 / 2 + 0.03) - (worktopDepth / 2)]} material={errorMat}>
+               <boxGeometry args={[cab.w + (worktopDepth - 0.5 - 0.03), 0.038, worktopDepth]} />
+             </mesh>
+             <mesh
+               position={[(cab.cornerSide==='prawy'?1:-1) * (cab.w/2 - 0.5 - 0.03 + worktopDepth/2), 0, (cab.w2||0.9)/2 + 0.015]}
+               rotation={[0, (cab.cornerSide === 'prawy' ? -Math.PI / 2 : Math.PI / 2) + (nextIsFlipped ? Math.PI : 0), 0]}
+               material={errorMat}
+             >
+               <boxGeometry args={[(cab.w2||0.9) - 0.5 - 0.03, 0.038, worktopDepth]} />
+             </mesh>
            </group>
          ) : isOuterCorner ? (
              <group position={[0, cab.h + 0.119, 0]} rotation={[0, isFlipped ? Math.PI : 0, 0]}>
                  {(() => {
                     const sign = cab.cornerSide === 'prawy' ? 1 : -1;
-                    const WTD = Math.max(0.1, worktopDepth);
-                    const w1_wt = Math.max(0.01, cab.w + 0.03 - WTD);
-                    const cx1 = sign * (-cab.w/2 + w1_wt/2);
-                    const cz1 = cab.d/2 + 0.03 - WTD/2;
+                    const safeW2 = cab.w2 || 0.9;
+                    const safeD2 = cab.d2 || 0.5;
+
+                    const w1_wt = cab.w - safeD2;
+                    const d1_wt = cab.d + 0.03;
+                    const cx1 = sign * (-safeD2 / 2);
+                    const cz1 = 0.015;
+
+                    const w2_wt = safeD2 + 0.03;
+                    const d2_wt = safeW2 + 0.03;
+                    const cx2 = sign * (cab.w / 2 - safeD2 / 2 + 0.015);
+                    const cz2 = cab.d / 2 - safeW2 / 2 + 0.015;
                     
-                    const w2_wt = WTD;
-                    const cx2 = sign * (cab.w/2 + 0.03 - WTD/2);
-                    const d2_wt = Math.max(0.01, (cab.w2 || 0.9) + 0.03);
-                    const cz2 = cab.d/2 + 0.03 - d2_wt/2;
                     return (
                       <>
                          <mesh position={[cx1, 0, cz1]} material={errorMat}>
-                           <boxGeometry args={[w1_wt - 0.002, 0.038, WTD - 0.002]} />
+                           <boxGeometry args={[w1_wt + 0.005, 0.042, d1_wt + 0.005]} />
                          </mesh>
                          <mesh position={[cx2, 0, cz2]} material={errorMat}>
-                           <boxGeometry args={[w2_wt - 0.002, 0.038, d2_wt - 0.002]} />
+                           <boxGeometry args={[w2_wt + 0.005, 0.042, d2_wt + 0.005]} />
                          </mesh>
                       </>
                     );
@@ -1366,63 +1351,32 @@ export default function App() {
 
           let checkPoints = [];
 
-          // POMOCNICZA FUNKCJA: Tworzy punkty kontrolne IDEALNIE zgodne z czerwoną aurą
-          const addExactBox = (cx, cz, wBox, dBox) => {
-             // OSTATECZNA SYNCHRONIZACJA Z SHADEREM
-             // Czerwone bryły błędów na karcie graficznej są pomniejszone o 2mm (0.002).
-             // Zmniejszamy punkty JS nieco bardziej (margines błędu 0.005), co da 100% synchronizacji i usunie błąd styku!
-             const hx = (wBox - 0.005) / 2;
-             const hz = (dBox - 0.005) / 2;
-             if (hx > 0 && hz > 0) {
+          const addBoxPoints = (cx, cz, boxW, boxD) => {
+             const inset = 0.005;
+             const ix = boxW / 2 - inset;
+             const iz = boxD / 2 - inset;
+             if (ix > 0 && iz > 0) {
                  checkPoints.push(
-                     new THREE.Vector3(flipMult * (cx + hx), 0, flipMult * (cz + hz)),
-                     new THREE.Vector3(flipMult * (cx - hx), 0, flipMult * (cz + hz)),
-                     new THREE.Vector3(flipMult * (cx + hx), 0, flipMult * (cz - hz)),
-                     new THREE.Vector3(flipMult * (cx - hx), 0, flipMult * (cz - hz))
+                     new THREE.Vector3(flipMult * (cx + ix), 0, flipMult * (cz + iz)),
+                     new THREE.Vector3(flipMult * (cx - ix), 0, flipMult * (cz + iz)),
+                     new THREE.Vector3(flipMult * (cx + ix), 0, flipMult * (cz - iz)),
+                     new THREE.Vector3(flipMult * (cx - ix), 0, flipMult * (cz - iz))
                  );
              }
           };
           
           if (cab.type === 'naroznik_zew') {
              const sign = cab.cornerSide === 'prawy' ? 1 : -1;
+             const safeW2 = cab.w2 || 0.9;
+             const safeD2 = cab.d2 || 0.5;
              
-             // 1. Główny korpus
-             addExactBox(0, 0, cab.w, cab.d);
-             
-             // 2. Ramię boczne
-             const d2 = cab.d2 || 0.5;
-             const w2 = cab.w2 || 0.9;
-             addExactBox(sign * (cab.w / 2 - d2 / 2), -w2 / 2, d2, w2 - cab.d);
-
-             // 3. Blaty
-             if (showWorktopGlobal && cab.hasWorktop) {
-                const WTD = Math.max(0.1, worktopDepth);
-                
-                // Blat Ramię 1
-                const w1_wt = Math.max(0.01, cab.w + 0.03 - WTD);
-                const cx1 = sign * (-cab.w / 2 + w1_wt / 2);
-                const cz1 = cab.d / 2 + 0.03 - WTD / 2;
-                addExactBox(cx1, cz1, w1_wt, WTD);
-
-                // Blat Ramię 2
-                const w2_wt = WTD;
-                const cx2 = sign * (cab.w / 2 + 0.03 - WTD / 2);
-                const d2_wt = Math.max(0.01, (cab.w2 || 0.9) + 0.03);
-                const cz2 = cab.d / 2 + 0.03 - d2_wt / 2;
-                addExactBox(cx2, cz2, w2_wt, d2_wt);
-             }
+             addBoxPoints(0, 0, cab.w, cab.d);
+             addBoxPoints(sign * (cab.w / 2 - safeD2 / 2), -safeW2 / 2, safeD2, safeW2 - cab.d);
           } else {
-             // Standardowy kod dla reszty szafek
              checkPoints = [
-               new THREE.Vector3(0, 0, 0), 
-               new THREE.Vector3(flipMult * hw, 0, flipMult * hd), 
-               new THREE.Vector3(flipMult * -hw, 0, flipMult * hd),
-               new THREE.Vector3(flipMult * hw, 0, flipMult * -hd), 
-               new THREE.Vector3(flipMult * -hw, 0, flipMult * -hd),
-               new THREE.Vector3(flipMult * hw, 0, 0),
-               new THREE.Vector3(flipMult * -hw, 0, 0),
-               new THREE.Vector3(0, 0, flipMult * hd),
-               new THREE.Vector3(0, 0, flipMult * -hd)
+               new THREE.Vector3(0, 0, 0), new THREE.Vector3(flipMult * hw, 0, flipMult * hd), new THREE.Vector3(flipMult * -hw, 0, flipMult * hd),
+               new THREE.Vector3(flipMult * hw, 0, flipMult * -hd), new THREE.Vector3(flipMult * -hw, 0, flipMult * -hd), new THREE.Vector3(flipMult * hw, 0, 0),
+               new THREE.Vector3(flipMult * -hw, 0, 0), new THREE.Vector3(0, 0, flipMult * hd), new THREE.Vector3(0, 0, flipMult * -hd)
              ];
              
              if (cab.type === 'naroznik') {
@@ -1432,35 +1386,41 @@ export default function App() {
              }
 
              if (showWorktopGlobal && cab.hasWorktop && cab.type !== 'puste') {
-                const WTD = worktopDepth;
+                const hwd = worktopDepth / 2;
                 if (cab.type === 'naroznik') {
                    const sign = cab.cornerSide === 'prawy' ? 1 : -1;
-                   const w1_wt = cab.w + WTD - 0.53;
-                   const cx1 = sign * (WTD - 0.53) / 2;
-                   const cz1 = hd + 0.03 - WTD / 2;
+                   const w1 = cab.w + (worktopDepth - 0.53);
+                   const cx1 = sign * (worktopDepth - 0.53) / 2;
+                   const cz1 = 0.28 - hwd;
+                   const right1 = cx1 + w1/2 + 0.02;
+                   const left1 = cx1 - w1/2 - 0.02;
+                   const front1 = cz1 + hwd + 0.02;
+                   const back1 = cz1 - hwd - 0.02;
                    checkPoints.push(
-                      new THREE.Vector3(flipMult * (cx1 + w1_wt/2), 0, flipMult * (cz1 + WTD/2)),
-                      new THREE.Vector3(flipMult * (cx1 + w1_wt/2), 0, flipMult * (cz1 - WTD/2)),
-                      new THREE.Vector3(flipMult * (cx1 - w1_wt/2), 0, flipMult * (cz1 + WTD/2)),
-                      new THREE.Vector3(flipMult * (cx1 - w1_wt/2), 0, flipMult * (cz1 - WTD/2))
+                      new THREE.Vector3(flipMult * right1, 0, flipMult * front1),
+                      new THREE.Vector3(flipMult * right1, 0, flipMult * back1),
+                      new THREE.Vector3(flipMult * left1, 0, flipMult * front1),
+                      new THREE.Vector3(flipMult * left1, 0, flipMult * back1)
                    );
-                   const w2_wt = 2 * WTD + (cab.w2 || 0.9) - cab.d - 0.59;
-                   const cx2 = sign * (hw - 0.53 + WTD / 2);
-                   const cz2 = WTD + (cab.w2 || 0.9) / 2 - 0.265;
+                   const w2 = (cab.w2 || 0.9) - 0.53;
+                   const cx2 = sign * (cab.w/2 - 0.53 + hwd);
+                   const cz2 = (cab.w2 || 0.9)/2 + 0.015;
+                   const right2 = cx2 + hwd + 0.02;
+                   const left2 = cx2 - hwd - 0.02;
+                   const front2 = cz2 + w2/2 + 0.02;
+                   const back2 = cz2 - w2/2 - 0.02;
                    checkPoints.push(
-                      new THREE.Vector3(flipMult * (cx2 + WTD/2), 0, flipMult * (cz2 + w2_wt/2)),
-                      new THREE.Vector3(flipMult * (cx2 + WTD/2), 0, flipMult * (cz2 - w2_wt/2)),
-                      new THREE.Vector3(flipMult * (cx2 - WTD/2), 0, flipMult * (cz2 + w2_wt/2)),
-                      new THREE.Vector3(flipMult * (cx2 - WTD/2), 0, flipMult * (cz2 - w2_wt/2))
+                      new THREE.Vector3(flipMult * right2, 0, flipMult * front2),
+                      new THREE.Vector3(flipMult * right2, 0, flipMult * back2),
+                      new THREE.Vector3(flipMult * left2, 0, flipMult * front2),
+                      new THREE.Vector3(flipMult * left2, 0, flipMult * back2)
                    );
                 } else {
-                   const wtFront = hd + 0.03;
-                   const wtBack = hd + 0.03 - WTD;
+                   const wtCenterZ = (cab.d / 2 + 0.03) - hwd;
+                   const localZ = isFlippedLocal ? -wtCenterZ : wtCenterZ;
                    checkPoints.push(
-                      new THREE.Vector3(flipMult * hw, 0, flipMult * wtFront),
-                      new THREE.Vector3(flipMult * -hw, 0, flipMult * wtFront),
-                      new THREE.Vector3(flipMult * hw, 0, flipMult * wtBack),
-                      new THREE.Vector3(flipMult * -hw, 0, flipMult * wtBack)
+                      new THREE.Vector3(hw, 0, localZ + hwd), new THREE.Vector3(-hw, 0, localZ + hwd),
+                      new THREE.Vector3(hw, 0, localZ - hwd), new THREE.Vector3(-hw, 0, localZ - hwd)
                    );
                 }
              }
@@ -2444,64 +2404,57 @@ export default function App() {
                                  }
                                  return cab.type === 'naroznik' ? (
                                    <group position={[0, cab.h + 0.119, 0]} rotation={[0, isFlipped ? Math.PI : 0, 0]}>
-                                     {(() => {
-                                        const sign = cab.cornerSide === 'prawy' ? 1 : -1;
-                                        const WTD = worktopDepth;
-                                        const w1_wt = cab.w + WTD - 0.53;
-                                        const cx1 = sign * (WTD - 0.53) / 2;
-                                        const cz1 = cab.d / 2 + 0.03 - WTD / 2;
-                                        const w2_wt = 2 * WTD + (cab.w2 || 0.9) - cab.d - 0.59;
-                                        const cx2 = sign * (cab.w / 2 - 0.53 + WTD / 2);
-                                        const cz2 = WTD + (cab.w2 || 0.9) / 2 - 0.265;
-                                        return (
-                                          <>
-                                             <mesh position={[cx1, 0, cz1]}>
-                                               <boxGeometry args={[w1_wt + 0.001, 0.038, WTD]} />
-                                               <PłytaMaterial 
-                                                 dekor={DEKORY[worktopDecor]} 
-                                                 w={w1_wt} 
-                                                 h={WTD} 
-                                                 rotate 
-                                                 offsetX={isFlipped ? item.dist + cab.w + (cab.cornerSide === 'lewy' ? (WTD - 0.53) : 0) - (runCabinets[index - 1] ? runCabinets[index - 1].w : 0.6) : item.dist} 
-                                                 offsetY={isFlipped ? -(item.crossDist + (wtCenterZ * 2)) : item.crossDist} 
-                                               />
-                                             </mesh>
-                                             <mesh 
-                                               position={[cx2, 0, cz2]}
-                                               rotation={[0, (cab.cornerSide === 'prawy' ? -Math.PI / 2 : Math.PI / 2) + (nextIsFlipped ? Math.PI : 0), 0]}
-                                             >
-                                               <boxGeometry args={[w2_wt + 0.001, 0.038, WTD]} />
-                                               <PłytaMaterial 
-                                                 dekor={DEKORY[worktopDecor]} 
-                                                 w={w2_wt} 
-                                                 h={WTD} 
-                                                 rotate 
-                                                 offsetX={nextIsFlipped ? -(item.dist + cab.w + 0.03) : (item.dist + cab.w + 0.03)} 
-                                                 offsetY={item.crossDist + (cab.cornerSide === 'prawy' ? 0.07 : -0.07) + (nextIsFlipped ? (wtCenterZ * 2) : 0)} 
-                                              />
-                                             </mesh>
-                                          </>
-                                        );
-                                     })()}
+                                     <>
+                                       <mesh position={[(cab.cornerSide==='prawy'?1:-1) * (worktopDepth - 0.5 - 0.03) / 2, 0, (0.5 / 2 + 0.03) - (worktopDepth / 2)]}>
+                                         <boxGeometry args={[cab.w + (worktopDepth - 0.5 - 0.03) + 0.001, 0.038, worktopDepth]} />
+                                         <PłytaMaterial 
+                                           dekor={DEKORY[worktopDecor]} 
+                                           w={cab.w + (worktopDepth - 0.5 - 0.03)} 
+                                           h={worktopDepth} 
+                                           rotate 
+                                           offsetX={isFlipped ? item.dist + cab.w + (cab.cornerSide === 'lewy' ? (worktopDepth - 0.5 - 0.03) : 0) - (runCabinets[index - 1] ? runCabinets[index - 1].w : 0.6) : item.dist} 
+                                           offsetY={isFlipped ? -(item.crossDist + (wtCenterZ * 2)) : item.crossDist} 
+                                         />
+                                       </mesh>
+                                       <mesh 
+                                         position={[(cab.cornerSide==='prawy'?1:-1) * (cab.w/2 - 0.5 - 0.03 + worktopDepth/2), 0, (cab.w2||0.9)/2 + 0.015]}
+                                         rotation={[0, (cab.cornerSide === 'prawy' ? -Math.PI / 2 : Math.PI / 2) + (nextIsFlipped ? Math.PI : 0), 0]}
+                                       >
+                                         <boxGeometry args={[(cab.w2||0.9) - 0.5 - 0.03 + 0.001, 0.038, worktopDepth]} />
+                                         <PłytaMaterial 
+                                           dekor={DEKORY[worktopDecor]} 
+                                           w={(cab.w2||0.9) - 0.5 - 0.03} 
+                                           h={worktopDepth} 
+                                           rotate 
+                                           offsetX={nextIsFlipped ? -(item.dist + cab.w + 0.03) : (item.dist + cab.w + 0.03)} 
+                                           offsetY={item.crossDist + (cab.cornerSide === 'prawy' ? 0.07 : -0.07) + (nextIsFlipped ? (wtCenterZ * 2) : 0)} 
+                                         />
+                                       </mesh>
+                                     </>
                                    </group>
                                  ) : cab.type === 'naroznik_zew' ? (
                                    <group position={[0, cab.h + 0.119, 0]} rotation={[0, isFlipped ? Math.PI : 0, 0]}>
                                        {(() => {
                                           const sign = cab.cornerSide === 'prawy' ? 1 : -1;
-                                          const WTD = Math.max(0.1, worktopDepth);
-                                          const w1_wt = Math.max(0.01, cab.w + 0.03 - WTD);
-                                          const cx1 = sign * (-cab.w/2 + w1_wt/2);
-                                          const cz1 = cab.d/2 + 0.03 - WTD/2;
-                                          
-                                          const w2_wt = WTD;
-                                          const cx2 = sign * (cab.w/2 + 0.03 - WTD/2);
-                                          const d2_wt = Math.max(0.01, (cab.w2 || 0.9) + 0.03);
-                                          const cz2 = cab.d/2 + 0.03 - d2_wt/2;
+                                          const safeW2 = cab.w2 || 0.9;
+                                          const safeD2 = cab.d2 || 0.5;
+
+                                          // IDEALNIE docięty blat do krawędzi szafek (3cm nawisu)
+                                          const w1_wt = cab.w - safeD2;
+                                          const d1_wt = cab.d + 0.03;
+                                          const cx1 = sign * (-safeD2 / 2);
+                                          const cz1 = 0.015;
+
+                                          const w2_wt = safeD2 + 0.03;
+                                          const d2_wt = safeW2 + 0.03;
+                                          const cx2 = sign * (cab.w / 2 - safeD2 / 2 + 0.015);
+                                          const cz2 = cab.d / 2 - safeW2 / 2 + 0.015;
+
                                           return (
                                             <>
                                                <mesh position={[cx1, 0, cz1]}>
-                                                 <boxGeometry args={[w1_wt + 0.001, 0.038, WTD]} />
-                                                 <PłytaMaterial dekor={DEKORY[worktopDecor]} w={w1_wt} h={WTD} rotate />
+                                                 <boxGeometry args={[w1_wt + 0.001, 0.038, d1_wt]} />
+                                                 <PłytaMaterial dekor={DEKORY[worktopDecor]} w={w1_wt} h={d1_wt} rotate />
                                                </mesh>
                                                <mesh position={[cx2, 0, cz2]}>
                                                  <boxGeometry args={[w2_wt + 0.001, 0.038, d2_wt]} />
@@ -2538,10 +2491,90 @@ export default function App() {
                             let showText = false;
                             
                             if (item.isOutOfBounds) {
-                               // POMYSŁ UŻYTKOWNIKA: Pełna i bezwzględna synchronizacja.
-                               // Jeśli silnik zgłosił kolizję i włączył czerwoną aurę (isOutOfBounds),
-                               // to automatycznie pozwalamy na pojawienie się tekstu błędu.
-                               showText = true;
+                              const cab = runCabinets.find(c => c.id === item.id);
+                              if (cab && item.polyNodes && item.polyNodes.length >= 3 && cab.type !== 'naroznik_zew') {
+                                const hw = cab.w / 2; const hd = cab.d / 2;
+                                const hwd = worktopDepth / 2;
+                                
+                                let isFlippedLocal = cab.reverseFront || false;
+                                const cornersBefore = runCabinets.slice(0, index).filter(c => ['naroznik', 'naroznik_zew'].includes(c.type)).length;
+                                if (['naroznik', 'naroznik_zew'].includes(cab.type)) isFlippedLocal = (cornersBefore === 2);
+                                else if (cornersBefore === 2) isFlippedLocal = !isFlippedLocal;
+                                const flipMult = isFlippedLocal ? -1 : 1;
+
+                                const strictPoints = [
+                                  new THREE.Vector3(0, 0, 0), 
+                                  new THREE.Vector3(flipMult * hw, 0, flipMult * hd), 
+                                  new THREE.Vector3(flipMult * -hw, 0, flipMult * hd),
+                                  new THREE.Vector3(flipMult * hw, 0, flipMult * -hd), 
+                                  new THREE.Vector3(flipMult * -hw, 0, flipMult * -hd)
+                                ];
+                                if (cab.type === 'naroznik') {
+                                  const sign = cab.cornerSide === 'prawy' ? 1 : -1;
+                                  strictPoints.push(
+                                      new THREE.Vector3(flipMult * (sign * (hw - (cab.d2 || 0.5))), 0, flipMult * ((cab.w2 || 0.9) - hd)),
+                                      new THREE.Vector3(flipMult * (sign * hw), 0, flipMult * ((cab.w2 || 0.9) - hd))
+                                  );
+                                }
+                                
+                                if (showWorktopGlobal && cab.hasWorktop && cab.type !== 'puste') {
+                                   if (cab.type === 'naroznik') {
+                                     const sign = cab.cornerSide === 'prawy' ? 1 : -1;
+                                     const w1 = cab.w + (worktopDepth - 0.53);
+                                     const cx1 = sign * (worktopDepth - 0.53) / 2;
+                                     const cz1 = 0.28 - hwd;
+                                     strictPoints.push(
+                                        new THREE.Vector3(flipMult * (cx1 + w1/2), 0, flipMult * (cz1 + hwd)),
+                                        new THREE.Vector3(flipMult * (cx1 + w1/2), 0, flipMult * (cz1 - hwd)),
+                                        new THREE.Vector3(flipMult * (cx1 - w1/2), 0, flipMult * (cz1 + hwd)),
+                                        new THREE.Vector3(flipMult * (cx1 - w1/2), 0, flipMult * (cz1 - hwd))
+                                     );
+                                     const w2 = (cab.w2 || 0.9) - 0.53;
+                                     const cx2 = sign * (cab.w/2 - 0.53 + hwd);
+                                     const cz2 = (cab.w2 || 0.9)/2 + 0.015;
+                                     strictPoints.push(
+                                        new THREE.Vector3(flipMult * (cx2 + hwd), 0, flipMult * (cz2 + w2/2)),
+                                        new THREE.Vector3(flipMult * (cx2 + hwd), 0, flipMult * (cz2 - w2/2)),
+                                        new THREE.Vector3(flipMult * (cx2 - hwd), 0, flipMult * (cz2 + w2/2)),
+                                        new THREE.Vector3(flipMult * (cx2 - hwd), 0, flipMult * (cz2 - w2/2))
+                                     );
+                                   } else {
+                                     const wtCenterZ = (cab.d / 2 + 0.03) - hwd;
+                                     const localZ = isFlippedLocal ? -wtCenterZ : wtCenterZ;
+                                     strictPoints.push(
+                                        new THREE.Vector3(hw, 0, localZ + hwd), new THREE.Vector3(-hw, 0, localZ + hwd),
+                                        new THREE.Vector3(hw, 0, localZ - hwd), new THREE.Vector3(-hw, 0, localZ - hwd)
+                                     );
+                                   }
+                                }
+
+                                let actuallyOutside = false;
+                                for (let pt of strictPoints) {
+                                  const wpt = pt.clone();
+                                  wpt.applyEuler(new THREE.Euler(0, item.rot, 0));
+                                  wpt.add(new THREE.Vector3(item.pos[0], item.pos[1], item.pos[2]));
+                                  
+                                  let insidePt = false;
+                                  let isClose = false;
+                                  for (let i = 0, j = item.polyNodes.length - 1; i < item.polyNodes.length; j = i++) {
+                                    let xi = item.polyNodes[i].x, zi = item.polyNodes[i].z;
+                                    let xj = item.polyNodes[j].x, zj = item.polyNodes[j].z;
+                                    if (((zi > wpt.z) !== (zj > wpt.z)) && (wpt.x < (xj - xi) * (wpt.z - zi) / (zj - zi) + xi)) insidePt = !insidePt;
+                                    let l2 = (xj - xi)**2 + (zj - zi)**2;
+                                    if (l2 > 0) {
+                                        let t = ((wpt.x - xi)*(xj - xi) + (wpt.z - zi)*(zj - zi)) / l2;
+                                        t = Math.max(0, Math.min(1, t));
+                                        let projX = xi + t * (xj - xi);
+                                        let projZ = zi + t * (zj - zi);
+                                        if (Math.sqrt((wpt.x - projX)**2 + (wpt.z - projZ)**2) <= 0.003) isClose = true;
+                                    }
+                                  }
+                                  if (!insidePt && !isClose) { actuallyOutside = true; break; }
+                                }
+                                showText = actuallyOutside;
+                              } else {
+                                showText = true;
+                              }
                             }
 
                             if (showText) {
