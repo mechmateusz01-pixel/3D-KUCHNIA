@@ -1055,13 +1055,12 @@ function CabinetError({ cab, isFlipped, polyNodes, showWorktop, worktopDepth, ne
                <boxGeometry args={[(cab.d2 || 0.5), h, (cab.w2 || 0.9) - 0.5]} />
              </mesh>
            )}
-           {/* Prawidłowe wymiary dla obrysu błędu narożnika zewnętrznego */}
            {isOuterCorner && (
              <mesh material={errorMat} position={[(cab.cornerSide === 'prawy' ? 1 : -1) * (cab.w/2 - (cab.d2 || 0.5)/2), 0, -(cab.w2 || 0.9)/2]}>
-               <boxGeometry args={[(cab.d2 || 0.5) - 0.002, h, (cab.w2 || 0.9) - cab.d - 0.002]} />
+               <boxGeometry args={[(cab.d2 || 0.5), h, (cab.w2 || 0.9) - cab.d]} />
              </mesh>
            )}
-         </group>
+           </group>
        </group>
 
        {showWorktop && (
@@ -1370,8 +1369,32 @@ export default function App() {
              const safeW2 = cab.w2 || 0.9;
              const safeD2 = cab.d2 || 0.5;
              
-             addBoxPoints(0, 0, cab.w, cab.d);
-             addBoxPoints(sign * (cab.w / 2 - safeD2 / 2), -safeW2 / 2, safeD2, safeW2 - cab.d);
+             const addBoxZew = (cx, cz, boxW, boxD) => {
+                 const ix = (boxW / 2) - 0.002; // Perfekcyjny bufor 2mm (reakcja na styk)
+                 const iz = (boxD / 2) - 0.002;
+                 if (ix > 0 && iz > 0) {
+                     checkPoints.push(
+                         new THREE.Vector3(flipMult * (cx + ix), 0, flipMult * (cz + iz)),
+                         new THREE.Vector3(flipMult * (cx - ix), 0, flipMult * (cz + iz)),
+                         new THREE.Vector3(flipMult * (cx + ix), 0, flipMult * (cz - iz)),
+                         new THREE.Vector3(flipMult * (cx - ix), 0, flipMult * (cz - iz))
+                     );
+                 }
+             };
+             
+             // Skanujemy OBA ramiona z buforem 2mm, to już jest bezpieczne
+             addBoxZew(0, 0, cab.w, cab.d);
+             addBoxZew(sign * (cab.w / 2 - safeD2 / 2), -safeW2 / 2, safeD2, safeW2 - cab.d);
+
+             if (showWorktopGlobal && cab.hasWorktop) {
+                const w1_wt = cab.w - safeD2; const d1_wt = cab.d + 0.03;
+                const cx1 = sign * (-safeD2 / 2); const cz1 = 0.015;
+                addBoxZew(cx1, cz1, w1_wt, d1_wt);
+
+                const w2_wt = safeD2 + 0.03; const d2_wt = safeW2 + 0.03;
+                const cx2 = sign * (cab.w / 2 - safeD2 / 2 + 0.015); const cz2 = cab.d / 2 - safeW2 / 2 + 0.015;
+                addBoxZew(cx2, cz2, w2_wt, d2_wt);
+             }
           } else {
              checkPoints = [
                new THREE.Vector3(0, 0, 0), new THREE.Vector3(flipMult * hw, 0, flipMult * hd), new THREE.Vector3(flipMult * -hw, 0, flipMult * hd),
@@ -2492,7 +2515,7 @@ export default function App() {
                             
                             if (item.isOutOfBounds) {
                               const cab = runCabinets.find(c => c.id === item.id);
-                              if (cab && item.polyNodes && item.polyNodes.length >= 3 && cab.type !== 'naroznik_zew') {
+                              if (cab && item.polyNodes && item.polyNodes.length >= 3) {
                                 const hw = cab.w / 2; const hd = cab.d / 2;
                                 const hwd = worktopDepth / 2;
                                 
@@ -2502,13 +2525,34 @@ export default function App() {
                                 else if (cornersBefore === 2) isFlippedLocal = !isFlippedLocal;
                                 const flipMult = isFlippedLocal ? -1 : 1;
 
-                                const strictPoints = [
-                                  new THREE.Vector3(0, 0, 0), 
-                                  new THREE.Vector3(flipMult * hw, 0, flipMult * hd), 
-                                  new THREE.Vector3(flipMult * -hw, 0, flipMult * hd),
-                                  new THREE.Vector3(flipMult * hw, 0, flipMult * -hd), 
-                                  new THREE.Vector3(flipMult * -hw, 0, flipMult * -hd)
-                                ];
+                                let strictPoints = [];
+                                if (cab.type === 'naroznik_zew') {
+                                  const sign = cab.cornerSide === 'prawy' ? 1 : -1;
+                                  const safeW2 = cab.w2 || 0.9; const safeD2 = cab.d2 || 0.5;
+                                  
+                                  const addStrictBox = (cx, cz, boxW, boxD) => {
+                                      const ix = (boxW / 2) - 0.002; // Perfekcyjny bufor 2mm
+                                      const iz = (boxD / 2) - 0.002;
+                                      if (ix > 0 && iz > 0) {
+                                          strictPoints.push(
+                                              new THREE.Vector3(flipMult * (cx + ix), 0, flipMult * (cz + iz)),
+                                              new THREE.Vector3(flipMult * (cx - ix), 0, flipMult * (cz + iz)),
+                                              new THREE.Vector3(flipMult * (cx + ix), 0, flipMult * (cz - iz)),
+                                              new THREE.Vector3(flipMult * (cx - ix), 0, flipMult * (cz - iz))
+                                          );
+                                      }
+                                  };
+                                  // Skanujemy TYLKO pełnowymiarowe ramię główne
+                                  addStrictBox(0, 0, cab.w, cab.d);
+                                } else {
+                                  strictPoints = [
+                                    new THREE.Vector3(0, 0, 0), 
+                                    new THREE.Vector3(flipMult * hw, 0, flipMult * hd), 
+                                    new THREE.Vector3(flipMult * -hw, 0, flipMult * hd),
+                                    new THREE.Vector3(flipMult * hw, 0, flipMult * -hd), 
+                                    new THREE.Vector3(flipMult * -hw, 0, flipMult * -hd)
+                                  ];
+                                }
                                 if (cab.type === 'naroznik') {
                                   const sign = cab.cornerSide === 'prawy' ? 1 : -1;
                                   strictPoints.push(
@@ -2518,7 +2562,29 @@ export default function App() {
                                 }
                                 
                                 if (showWorktopGlobal && cab.hasWorktop && cab.type !== 'puste') {
-                                   if (cab.type === 'naroznik') {
+                                   if (cab.type === 'naroznik_zew') {
+                                      const sign = cab.cornerSide === 'prawy' ? 1 : -1;
+                                      const safeW2 = cab.w2 || 0.9;
+                                      const safeD2 = cab.d2 || 0.5;
+                                      
+                                      const addStrictBoxWorktop = (cx, cz, boxW, boxD) => {
+                                          const ix = (boxW / 2) - 0.002;
+                                          const iz = (boxD / 2) - 0.002;
+                                          if (ix > 0 && iz > 0) {
+                                              strictPoints.push(
+                                                  new THREE.Vector3(flipMult * (cx + ix), 0, flipMult * (cz + iz)),
+                                                  new THREE.Vector3(flipMult * (cx - ix), 0, flipMult * (cz + iz)),
+                                                  new THREE.Vector3(flipMult * (cx + ix), 0, flipMult * (cz - iz)),
+                                                  new THREE.Vector3(flipMult * (cx - ix), 0, flipMult * (cz - iz))
+                                              );
+                                          }
+                                      };
+
+                                      const w1_wt = cab.w - safeD2; const d1_wt = cab.d + 0.03;
+                                      const cx1 = sign * (-safeD2 / 2); const cz1 = 0.015;
+                                      addStrictBoxWorktop(cx1, cz1, w1_wt, d1_wt);
+                                      
+                                   } else if (cab.type === 'naroznik') {
                                      const sign = cab.cornerSide === 'prawy' ? 1 : -1;
                                      const w1 = cab.w + (worktopDepth - 0.53);
                                      const cx1 = sign * (worktopDepth - 0.53) / 2;
