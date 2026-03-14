@@ -497,6 +497,25 @@ function Szafka({ width, height, depth, dekorFront, dekorBody, type, baseType, d
   const sideH = baseType === 'cokol' ? height + baseH : height;
   const sideY = baseType === 'cokol' ? (height - baseH) / 2 : height / 2;
   
+  // KSZTAŁTY TRÓJKĄTÓW DLA SZAFKI ZLEWOZMYWAKOWEJ
+  const triShapeL = useMemo(() => {
+    const triW = Math.min(width * 0.45, 0.30); // ZMIANA: Lekko powiększona szerokość
+    const triH = Math.min(height * 0.55, 0.50); // ZMIANA: Lekko powiększona wysokość
+    const shape = new THREE.Shape();
+    shape.moveTo(0, 0); shape.lineTo(triW, 0); shape.lineTo(0, triH); shape.lineTo(0, 0);
+    return shape;
+  }, [width, height]);
+
+  const triShapeR = useMemo(() => {
+    const triW = Math.min(width * 0.45, 0.30);
+    const triH = Math.min(height * 0.55, 0.50);
+    const shape = new THREE.Shape();
+    shape.moveTo(0, 0); shape.lineTo(-triW, 0); shape.lineTo(0, triH); shape.lineTo(0, 0);
+    return shape;
+  }, [width, height]);
+  
+  const exSet = useMemo(() => ({ depth: 0.002, bevelEnabled: false }), []);
+
   const renderDrawers = (h, startY) => {
     const netH = h - (drawersCount * gap);
     let curY = startY; const revRatios = [...(drawerRatios || [])].reverse();
@@ -539,8 +558,21 @@ function Szafka({ width, height, depth, dekorFront, dekorBody, type, baseType, d
       <mesh position={[-width/2 + t/2, sideY, -t/2]}><boxGeometry args={[t, sideH, depth - t]} /><PłytaMaterial dekor={dekorBody} w={depth} h={sideH} /></mesh>
       <mesh position={[width/2 - t/2, sideY, -t/2]}><boxGeometry args={[t, sideH, depth - t]} /><PłytaMaterial dekor={dekorBody} w={depth} h={sideH} /></mesh>
       <mesh position={[0, t/2, -t/2]}><boxGeometry args={[Math.max(0.01, width - 2*t), t, depth - t]} /><PłytaMaterial dekor={dekorBody} w={width} h={depth} rotate /></mesh>
-      <mesh position={[0, height - t/2, depth/2 - t - 0.05]}><boxGeometry args={[Math.max(0.01, width - 2*t), t, 0.1]} /><PłytaMaterial dekor={dekorBody} w={width} h={0.1} rotate /></mesh>
-      <mesh position={[0, height - t/2, -depth/2 + 0.05]}><boxGeometry args={[Math.max(0.01, width - 2*t), t, 0.1]} /><PłytaMaterial dekor={dekorBody} w={width} h={0.1} rotate /></mesh>
+      {/* POPRAWKA: Szafka pod zlew ma pionowe listwy zamiast poziomych, by zlew wszedł bez kolizji */}
+      {type === 'zlew' ? (
+        <>
+          {/* Przednia listwa zostaje u góry (tuż pod blatem) */}
+          <mesh position={[0, height - 0.05, depth/2 - t - t/2]}><boxGeometry args={[Math.max(0.01, width - 2*t), 0.1, t]} /><PłytaMaterial dekor={dekorBody} w={width} h={0.1} rotate={false} /></mesh>
+          
+          {/* ZMIANA: Tylna listwa opuszczona na ok. 2/3 wysokości (height * 0.66) */}
+          <mesh position={[0, height * 0.66, -depth/2 + t/2]}><boxGeometry args={[Math.max(0.01, width - 2*t), 0.1, t]} /><PłytaMaterial dekor={dekorBody} w={width} h={0.1} rotate={false} /></mesh>
+        </>
+      ) : (
+        <>
+          <mesh position={[0, height - t/2, depth/2 - t - 0.05]}><boxGeometry args={[Math.max(0.01, width - 2*t), t, 0.1]} /><PłytaMaterial dekor={dekorBody} w={width} h={0.1} rotate /></mesh>
+          <mesh position={[0, height - t/2, -depth/2 + 0.05]}><boxGeometry args={[Math.max(0.01, width - 2*t), t, 0.1]} /><PłytaMaterial dekor={dekorBody} w={width} h={0.1} rotate /></mesh>
+        </>
+      )}
       
       {/* NAPRAWIONE: Wieniec dzielący hybrydę wskakuje na właściwą wysokość */}
       {type === 'hybryda' && (
@@ -550,15 +582,32 @@ function Szafka({ width, height, depth, dekorFront, dekorBody, type, baseType, d
          </mesh>
       )}
 
-      <group position={[0, height/2, -depth/2 - 0.001]}>
-        <mesh position={[0, 0, 0.001]}><boxGeometry args={[width, height, 0.001]} /><meshStandardMaterial color="#f8f8f8" roughness={0.8} /></mesh>
-        <mesh position={[0, 0, -0.0005]}><boxGeometry args={[width, height, 0.002]} /><MaterialPilśni /></mesh>
-      </group>
+      {/* PLECY SZAFKI */}
+      {type === 'zlew' ? (
+        <group position={[0, 0, -depth/2 - 0.001]}>
+           {/* Lewy trójkąt stabilizujący */}
+           <group position={[-width/2, 0, 0]}>
+             <mesh position={[0, 0, -0.001]}><extrudeGeometry args={[triShapeL, exSet]} /><meshStandardMaterial color="#f8f8f8" roughness={0.8} /></mesh>
+             <mesh position={[0, 0, -0.003]}><extrudeGeometry args={[triShapeL, exSet]} /><MaterialPilśni /></mesh>
+           </group>
+           {/* Prawy trójkąt stabilizujący */}
+           <group position={[width/2, 0, 0]}>
+             <mesh position={[0, 0, -0.001]}><extrudeGeometry args={[triShapeR, exSet]} /><meshStandardMaterial color="#f8f8f8" roughness={0.8} /></mesh>
+             <mesh position={[0, 0, -0.003]}><extrudeGeometry args={[triShapeR, exSet]} /><MaterialPilśni /></mesh>
+           </group>
+        </group>
+      ) : (
+        <group position={[0, height/2, -depth/2 - 0.001]}>
+          <mesh position={[0, 0, 0.001]}><boxGeometry args={[width, height, 0.001]} /><meshStandardMaterial color="#f8f8f8" roughness={0.8} /></mesh>
+          <mesh position={[0, 0, -0.0005]}><boxGeometry args={[width, height, 0.002]} /><MaterialPilśni /></mesh>
+        </group>
+      )}
       <group position={[0, -baseH/2, 0]}>
         {baseType === 'nozki_regulowane' ? <><group position={[-width/2 + 0.05, 0, depth/2 - 0.15]}><NozkaRegulowana height={baseH} /></group><group position={[width/2 - 0.05, 0, depth/2 - 0.15]}><NozkaRegulowana height={baseH} /></group><group position={[-width/2 + 0.05, 0, -depth/2 + 0.05]}><NozkaRegulowana height={baseH} /></group><group position={[width/2 - 0.05, 0, -depth/2 + 0.05]}><NozkaRegulowana height={baseH} /></group><mesh position={[0, 0, depth/2 - t - 0.05 - t/2]}><boxGeometry args={[width, baseH, t]} /><PłytaMaterial dekor={dekorBody} w={width} h={baseH} rotate /></mesh></> : <mesh position={[0, 0, depth/2 - t - 0.05 - t/2]}><boxGeometry args={[Math.max(0.01, width - 2*t), baseH, t]} /><PłytaMaterial dekor={dekorBody} w={width} h={baseH} rotate /></mesh>}
       </group>
       <group position={[0, height/2, 0]}>
         {type === 'drzwi' && renderDoors(height, -height/2)}
+        {type === 'zlew' && renderDoors(height, -height/2)}
         {type === 'szuflady' && renderDrawers(height, -height/2)}
         {type === 'hybryda' && (hybridOrder === 'szuflady-gora' ? <>{renderDrawers(height * (hybridSplit/100), height/2 - height*(hybridSplit/100))}{renderDoors(height * (1 - hybridSplit/100), -height/2)}</> : <>{renderDrawers(height * (hybridSplit/100), -height/2)}{renderDoors(height * (1 - hybridSplit/100), -height/2 + height*(hybridSplit/100))}</>)}
       </group>
@@ -809,7 +858,7 @@ function MiniaturaSzafki({ cab, size = 50, showHandles = true }) {
       );
     }
 
-    if (cab.type === 'drzwi') return renderDoors();
+    if (cab.type === 'drzwi' || cab.type === 'zlew') return renderDoors();
     if (cab.type === 'szuflady') {
       return [33.33, 33.33, 33.34].map((r, i) => <div key={i} style={{ ...frontStyle, height: `${r}%` }}><Handle /></div>);
     }
@@ -1179,7 +1228,7 @@ export default function App() {
   };
 
   // ZMIANA: Liczymy cenę ze WSZYSTKICH ciągów!
-  const finalPrice = runs.reduce((total, run) => total + run.cabinets.reduce((sum, cab) => sum + (cab.type === 'puste' ? 0 : Math.round((cab.w * cab.h * cab.d * 1150) + (cab.type !== 'drzwi' ? cab.drawersC * 180 : 95))), 0), 0);
+  const finalPrice = runs.reduce((total, run) => total + run.cabinets.reduce((sum, cab) => sum + (cab.type === 'puste' ? 0 : Math.round((cab.w * cab.h * cab.d * 1150) + (!['drzwi', 'zlew'].includes(cab.type) ? cab.drawersC * 180 : 95))), 0), 0);
 
 // SILNIK UKŁADU KUCHNI (TERAZ DLA WSZYSTKICH CIĄGÓW NARAZ)
   const allLayouts = useMemo(() => {
@@ -2174,7 +2223,7 @@ export default function App() {
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '10px' }}>
                   {['drzwi', 'szuflady', 'hybryda', 'puste', 'naroznik', 'inne'].map(t => {
                     // Logika podświetlenia: przycisk "INNE" świeci się na zielono, jeśli aktywna szafka należy do nowej grupy.
-                    const isSpecType = ['naroznik_zew'].includes(activeCab.type);
+                    const isSpecType = ['naroznik_zew', 'zlew'].includes(activeCab.type);
                     const isActive = (activeCab.type === t && t !== 'inne') || (t === 'inne' && isSpecType);
 
                     return (
@@ -2269,7 +2318,7 @@ export default function App() {
                       </div>
                     )}
 
-                    {activeCab.type !== 'drzwi' && !['naroznik', 'naroznik_zew'].includes(activeCab.type) && (
+                    {!['drzwi', 'zlew'].includes(activeCab.type) && !['naroznik', 'naroznik_zew'].includes(activeCab.type) && (
                       <div style={{ marginBottom: '20px', padding: '12px', backgroundColor: '#f1f3f5', borderRadius: '10px' }}>
                         <label style={{ fontSize: '13px', fontWeight: 'bold' }}>Liczba szuflad: {activeCab.drawersC}</label>
                         <input type="range" min="1" max="4" value={activeCab.drawersC} onChange={(e) => { const c = parseInt(e.target.value); updateActiveCab({ drawersC: c, ratios: Array(c).fill(100/c) }); }} style={{ width: '100%' }} />
@@ -2282,7 +2331,7 @@ export default function App() {
                       </div>
                     )}
 
-                    {activeCab.type === 'drzwi' && (
+                    {['drzwi', 'zlew'].includes(activeCab.type) && (
                       <div style={{ marginBottom: '20px', padding: '12px', backgroundColor: '#f1f3f5', borderRadius: '10px' }}>
                         <div style={{ display: 'flex', gap: '10px' }}>
                           <div style={{ flex: 1 }}><label style={{ fontSize: '11px' }}>Drzwi:</label><select value={activeCab.doorsC} onChange={(e) => updateActiveCab({doorsC: parseInt(e.target.value)})} style={{ width: '100%' }}><option value={1}>1 Front</option><option value={2}>2 Fronty</option></select></div>
@@ -2295,6 +2344,16 @@ export default function App() {
                       <div style={{ marginBottom: '20px', padding: '12px', backgroundColor: '#e3f2fd', borderRadius: '10px', border: '1px solid #90caf9' }}>
                         <label style={{ fontSize: '13px', fontWeight: 'bold' }}>Liczba półek w środku: {activeCab.shelvesC || 0}</label>
                         <input type="range" min="0" max="5" value={activeCab.shelvesC || 0} onChange={(e) => updateActiveCab({shelvesC: parseInt(e.target.value)})} style={{ width: '100%', marginTop: '5px' }} />
+                      </div>
+                    )}
+
+                    {activeCab.type === 'zlew' && (
+                      <div style={{ marginBottom: '20px', padding: '12px', backgroundColor: '#e3f2fd', borderRadius: '10px', border: '1px solid #90caf9' }}>
+                        <label style={{ fontSize: '13px', fontWeight: 'bold' }}>Rodzaj zlewozmywaka:</label>
+                        <select value={activeCab.sinkType || 'wycinany'} onChange={(e) => updateActiveCab({sinkType: e.target.value})} style={{ width: '100%', padding: '8px', marginTop: '8px', borderRadius: '4px', border: '1px solid #ccc' }}>
+                          <option value="wycinany">Wycinany w blacie (Wpuszczany)</option>
+                          <option value="nakladany">Nakładany na szafkę (Zastępuje blat)</option>
+                        </select>
                       </div>
                     )}
 
@@ -2491,6 +2550,137 @@ export default function App() {
                                           );
                                        })()}
                                    </group>
+                                 ) : cab.type === 'zlew' ? (
+                                    <group position={[0, cab.h + 0.119, isFlipped ? -wtCenterZ : wtCenterZ]}>
+                                      {(!cab.sinkType || cab.sinkType === 'wycinany') ? (
+                                        <>
+                                          {/* BLAT Z DZIURĄ NA ZLEW */}
+                                          {(() => {
+                                            const isDoubleSink = cab.w >= 0.70; // INTELEIGENTNY WYBÓR: >= 70cm to 2 komory!
+                                            const marginX = 0.05; 
+                                            const marginZ = 0.06; 
+                                            const holeW = cab.w - (marginX * 2);
+                                            const holeD = worktopDepth - (marginZ * 2);
+                                            const offY = item.crossDist + (isFlipped ? (wtCenterZ * 2) : 0);
+
+                                            return (
+                                              <group>
+                                                {/* Lewy kawałek blatu */}
+                                                <mesh position={[-cab.w/2 + marginX/2, 0, 0]}><boxGeometry args={[marginX, 0.038, worktopDepth]} /><PłytaMaterial dekor={DEKORY[worktopDecor]} w={marginX} h={worktopDepth} rotate offsetX={isFlipped ? -item.dist : item.dist} offsetY={offY} /></mesh>
+                                                {/* Prawy kawałek blatu */}
+                                                <mesh position={[cab.w/2 - marginX/2, 0, 0]}><boxGeometry args={[marginX, 0.038, worktopDepth]} /><PłytaMaterial dekor={DEKORY[worktopDecor]} w={marginX} h={worktopDepth} rotate offsetX={isFlipped ? -(item.dist + cab.w - marginX) : item.dist + cab.w - marginX} offsetY={offY} /></mesh>
+                                                {/* Tylny kawałek blatu */}
+                                                <mesh position={[0, 0, -worktopDepth/2 + marginZ/2]}><boxGeometry args={[holeW, 0.038, marginZ]} /><PłytaMaterial dekor={DEKORY[worktopDecor]} w={holeW} h={marginZ} rotate offsetX={isFlipped ? -(item.dist + marginX) : item.dist + marginX} offsetY={offY} /></mesh>
+                                                {/* Przedni kawałek blatu */}
+                                                <mesh position={[0, 0, worktopDepth/2 - marginZ/2]}><boxGeometry args={[holeW, 0.038, marginZ]} /><PłytaMaterial dekor={DEKORY[worktopDecor]} w={holeW} h={marginZ} rotate offsetX={isFlipped ? -(item.dist + marginX) : item.dist + marginX} offsetY={offY + worktopDepth - marginZ} /></mesh>
+                                                
+                                                {/* MODEL ZLEWU WPUSZCZANEGO */}
+                                                <group position={[0, 0.02, 0]} rotation={[0, isFlipped ? Math.PI : 0, 0]}>
+                                                  {/* Kołnierz na blacie (Rozbity na 4 ramki) */}
+                                                  <mesh position={[-holeW/2, 0, 0]}><boxGeometry args={[0.04, 0.005, holeD + 0.04]} /><meshStandardMaterial color="#bcc6cc" roughness={0.3} metalness={0.8} /></mesh>
+                                                  <mesh position={[holeW/2, 0, 0]}><boxGeometry args={[0.04, 0.005, holeD + 0.04]} /><meshStandardMaterial color="#bcc6cc" roughness={0.3} metalness={0.8} /></mesh>
+                                                  <mesh position={[0, 0, -holeD/2]}><boxGeometry args={[holeW - 0.04, 0.005, 0.04]} /><meshStandardMaterial color="#bcc6cc" roughness={0.3} metalness={0.8} /></mesh>
+                                                  <mesh position={[0, 0, holeD/2]}><boxGeometry args={[holeW - 0.04, 0.005, 0.04]} /><meshStandardMaterial color="#bcc6cc" roughness={0.3} metalness={0.8} /></mesh>
+                                                  
+                                                  {/* Ściany komór (Głębokość 20cm) */}
+                                                  <mesh position={[-holeW/2 + 0.01, -0.1, 0]}><boxGeometry args={[0.02, 0.2, holeD]} /><meshStandardMaterial color="#bcc6cc" roughness={0.3} metalness={0.8} /></mesh>
+                                                  <mesh position={[holeW/2 - 0.01, -0.1, 0]}><boxGeometry args={[0.02, 0.2, holeD]} /><meshStandardMaterial color="#bcc6cc" roughness={0.3} metalness={0.8} /></mesh>
+                                                  <mesh position={[0, -0.1, -holeD/2 + 0.01]}><boxGeometry args={[holeW, 0.2, 0.02]} /><meshStandardMaterial color="#bcc6cc" roughness={0.3} metalness={0.8} /></mesh>
+                                                  <mesh position={[0, -0.1, holeD/2 - 0.01]}><boxGeometry args={[holeW, 0.2, 0.02]} /><meshStandardMaterial color="#bcc6cc" roughness={0.3} metalness={0.8} /></mesh>
+                                                  
+                                                  {/* Przegroda - Pojawia się TYLKO dla podwójnych komór */}
+                                                  {isDoubleSink && <mesh position={[0, -0.1, 0]}><boxGeometry args={[0.02, 0.2, holeD]} /><meshStandardMaterial color="#bcc6cc" roughness={0.3} metalness={0.8} /></mesh>}
+                                                  
+                                                  {/* Dno */}
+                                                  <mesh position={[0, -0.2, 0]}><boxGeometry args={[holeW, 0.02, holeD]} /><meshStandardMaterial color="#aab4b9" roughness={0.3} metalness={0.8} /></mesh>
+                                                  
+                                                  {/* Złote odpływy - 1 lub 2 w zależności od szerokości szafki */}
+                                                  {isDoubleSink ? (
+                                                    <>
+                                                      <mesh position={[-holeW/4, -0.189, 0]}><cylinderGeometry args={[0.035, 0.035, 0.005, 16]} /><meshStandardMaterial color="#d4af37" roughness={0.3} metalness={0.8} /></mesh>
+                                                      <mesh position={[holeW/4, -0.189, 0]}><cylinderGeometry args={[0.035, 0.035, 0.005, 16]} /><meshStandardMaterial color="#d4af37" roughness={0.3} metalness={0.8} /></mesh>
+                                                    </>
+                                                  ) : (
+                                                    <mesh position={[0, -0.189, 0]}><cylinderGeometry args={[0.035, 0.035, 0.005, 16]} /><meshStandardMaterial color="#d4af37" roughness={0.3} metalness={0.8} /></mesh>
+                                                  )}
+
+                                                  {/* Złota Bateria (Zawsze na środku) */}
+                                                  <group position={[0, 0, -holeD/2 + 0.05]}>
+                                                    <mesh position={[0, 0.03, 0]}><cylinderGeometry args={[0.022, 0.022, 0.06, 16]} /><meshStandardMaterial color="#d4af37" roughness={0.3} metalness={0.8} /></mesh>
+                                                    <mesh position={[0, 0.13, 0]}><cylinderGeometry args={[0.012, 0.012, 0.14, 16]} /><meshStandardMaterial color="#d4af37" roughness={0.3} metalness={0.8} /></mesh>
+                                                    <mesh position={[0, 0.20, 0.07]} rotation={[0, Math.PI/2, 0]}><torusGeometry args={[0.07, 0.012, 16, 32, Math.PI]} /><meshStandardMaterial color="#d4af37" roughness={0.3} metalness={0.8} /></mesh>
+                                                    <mesh position={[0, 0.18, 0.14]}><cylinderGeometry args={[0.015, 0.01, 0.04, 16]} /><meshStandardMaterial color="#d4af37" roughness={0.3} metalness={0.8} /></mesh>
+                                                    <mesh position={[0.03, 0.05, 0]} rotation={[0, 0, -Math.PI/4]}><cylinderGeometry args={[0.005, 0.005, 0.05, 16]} /><meshStandardMaterial color="#d4af37" roughness={0.3} metalness={0.8} /></mesh>
+                                                  </group>
+
+                                                  {/* Złoty Dozownik (Na skrajnej prawej krawędzi) */}
+                                                  <group position={[holeW/2 - 0.06, 0, -holeD/2 + 0.04]}>
+                                                    <mesh position={[0, 0.015, 0]}><cylinderGeometry args={[0.015, 0.015, 0.03, 16]} /><meshStandardMaterial color="#d4af37" roughness={0.3} metalness={0.8} /></mesh>
+                                                    <mesh position={[0, 0.04, 0]}><cylinderGeometry args={[0.004, 0.004, 0.02, 16]} /><meshStandardMaterial color="#d4af37" roughness={0.3} metalness={0.8} /></mesh>
+                                                    <mesh position={[-0.015, 0.05, 0]} rotation={[0, 0, Math.PI/2]}><cylinderGeometry args={[0.003, 0.003, 0.03, 16]} /><meshStandardMaterial color="#d4af37" roughness={0.3} metalness={0.8} /></mesh>
+                                                  </group>
+                                                </group>
+                                              </group>
+                                            );
+                                          })()}
+                                        </>
+                                      ) : (
+                                        <>
+                                          {/* ZLEW NAKŁADANY */}
+                                          {(() => {
+                                            const isDoubleSink = cab.w >= 0.70; // INTELEIGENTNY WYBÓR DLA NAKŁADANEGO
+                                            
+                                            return (
+                                              <group position={[0, 0, 0]} rotation={[0, isFlipped ? Math.PI : 0, 0]}>
+                                                {/* Zewnętrzne grube krawędzie zastępujące blat */}
+                                                <mesh position={[-cab.w/2 + 0.025, 0, 0]}><boxGeometry args={[0.05, 0.04, worktopDepth]} /><meshStandardMaterial color="#bcc6cc" roughness={0.3} metalness={0.8} /></mesh>
+                                                <mesh position={[cab.w/2 - 0.025, 0, 0]}><boxGeometry args={[0.05, 0.04, worktopDepth]} /><meshStandardMaterial color="#bcc6cc" roughness={0.3} metalness={0.8} /></mesh>
+                                                <mesh position={[0, 0, -worktopDepth/2 + 0.05]}><boxGeometry args={[cab.w - 0.1, 0.04, 0.1]} /><meshStandardMaterial color="#bcc6cc" roughness={0.3} metalness={0.8} /></mesh>
+                                                <mesh position={[0, 0, worktopDepth/2 - 0.025]}><boxGeometry args={[cab.w - 0.1, 0.04, 0.05]} /><meshStandardMaterial color="#bcc6cc" roughness={0.3} metalness={0.8} /></mesh>
+                                                
+                                                {/* Ściany komór w dół do szafki */}
+                                                <mesh position={[-cab.w/2 + 0.06, -0.09, 0]}><boxGeometry args={[0.02, 0.18, worktopDepth - 0.15]} /><meshStandardMaterial color="#bcc6cc" roughness={0.3} metalness={0.8} /></mesh>
+                                                <mesh position={[cab.w/2 - 0.06, -0.09, 0]}><boxGeometry args={[0.02, 0.18, worktopDepth - 0.15]} /><meshStandardMaterial color="#bcc6cc" roughness={0.3} metalness={0.8} /></mesh>
+                                                <mesh position={[0, -0.09, -worktopDepth/2 + 0.11]}><boxGeometry args={[cab.w - 0.1, 0.18, 0.02]} /><meshStandardMaterial color="#bcc6cc" roughness={0.3} metalness={0.8} /></mesh>
+                                                <mesh position={[0, -0.09, worktopDepth/2 - 0.06]}><boxGeometry args={[cab.w - 0.1, 0.18, 0.02]} /><meshStandardMaterial color="#bcc6cc" roughness={0.3} metalness={0.8} /></mesh>
+                                                
+                                                {/* Przegroda - TYLKO DLA WERSJI DWUKOMOROWEJ */}
+                                                {isDoubleSink && <mesh position={[0, -0.09, 0.025]}><boxGeometry args={[0.02, 0.18, worktopDepth - 0.15]} /><meshStandardMaterial color="#bcc6cc" roughness={0.3} metalness={0.8} /></mesh>}
+                                                
+                                                {/* Dno */}
+                                                <mesh position={[0, -0.19, 0.025]}><boxGeometry args={[cab.w - 0.1, 0.02, worktopDepth - 0.15]} /><meshStandardMaterial color="#aab4b9" roughness={0.3} metalness={0.8} /></mesh>
+                                                
+                                                {/* Złote odpływy - DYNAMICZNIE */}
+                                                {isDoubleSink ? (
+                                                  <>
+                                                    <mesh position={[-cab.w/4, -0.179, 0.025]}><cylinderGeometry args={[0.035, 0.035, 0.005, 16]} /><meshStandardMaterial color="#d4af37" roughness={0.3} metalness={0.8} /></mesh>
+                                                    <mesh position={[cab.w/4, -0.179, 0.025]}><cylinderGeometry args={[0.035, 0.035, 0.005, 16]} /><meshStandardMaterial color="#d4af37" roughness={0.3} metalness={0.8} /></mesh>
+                                                  </>
+                                                ) : (
+                                                  <mesh position={[0, -0.179, 0.025]}><cylinderGeometry args={[0.035, 0.035, 0.005, 16]} /><meshStandardMaterial color="#d4af37" roughness={0.3} metalness={0.8} /></mesh>
+                                                )}
+
+                                                {/* Złota Bateria (Łukowa) */}
+                                                <group position={[0, 0.02, -worktopDepth/2 + 0.06]}>
+                                                  <mesh position={[0, 0.03, 0]}><cylinderGeometry args={[0.022, 0.022, 0.06, 16]} /><meshStandardMaterial color="#d4af37" roughness={0.3} metalness={0.8} /></mesh>
+                                                  <mesh position={[0, 0.13, 0]}><cylinderGeometry args={[0.012, 0.012, 0.14, 16]} /><meshStandardMaterial color="#d4af37" roughness={0.3} metalness={0.8} /></mesh>
+                                                  <mesh position={[0, 0.20, 0.07]} rotation={[0, Math.PI/2, 0]}><torusGeometry args={[0.07, 0.012, 16, 32, Math.PI]} /><meshStandardMaterial color="#d4af37" roughness={0.3} metalness={0.8} /></mesh>
+                                                  <mesh position={[0, 0.18, 0.14]}><cylinderGeometry args={[0.015, 0.01, 0.04, 16]} /><meshStandardMaterial color="#d4af37" roughness={0.3} metalness={0.8} /></mesh>
+                                                  <mesh position={[0.03, 0.05, 0]} rotation={[0, 0, -Math.PI/4]}><cylinderGeometry args={[0.005, 0.005, 0.05, 16]} /><meshStandardMaterial color="#d4af37" roughness={0.3} metalness={0.8} /></mesh>
+                                                </group>
+
+                                                {/* Złoty Dozownik */}
+                                                <group position={[cab.w/2 - 0.08, 0.02, -worktopDepth/2 + 0.05]}>
+                                                  <mesh position={[0, 0.015, 0]}><cylinderGeometry args={[0.015, 0.015, 0.03, 16]} /><meshStandardMaterial color="#d4af37" roughness={0.3} metalness={0.8} /></mesh>
+                                                  <mesh position={[0, 0.04, 0]}><cylinderGeometry args={[0.004, 0.004, 0.02, 16]} /><meshStandardMaterial color="#d4af37" roughness={0.3} metalness={0.8} /></mesh>
+                                                  <mesh position={[-0.015, 0.05, 0]} rotation={[0, 0, Math.PI/2]}><cylinderGeometry args={[0.003, 0.003, 0.03, 16]} /><meshStandardMaterial color="#d4af37" roughness={0.3} metalness={0.8} /></mesh>
+                                                </group>
+                                              </group>
+                                            );
+                                          })()}
+                                        </>
+                                      )}
+                                    </group>
                                  ) : (
                                    <mesh position={[0, cab.h + 0.119, isFlipped ? -wtCenterZ : wtCenterZ]}>
                                      <boxGeometry args={[cab.w + 0.001, 0.038, worktopDepth]} />
@@ -2720,6 +2910,23 @@ export default function App() {
                      <MiniaturaSzafki cab={{type: 'naroznik_zew', cornerSide: 'prawy'}} size={60} showHandles={true} />
                    </div>
                    <div style={{ fontSize: '12px', marginTop: '10px', fontWeight: 'bold', color: '#2c3e50', textAlign: 'center' }}>Narożnik Zewnętrzny</div>
+                </button>
+
+                {/* 2. SZAFKA ZLEWOZMYWAKOWA */}
+                <button 
+                  onClick={() => {
+                    // Szafka pod zlew: 0 półek, 2 drzwi, domyślnie wycinany w blacie
+                    updateActiveCab({ type: 'zlew', w: 0.6, d: 0.5, h: 0.82, doorsC: 2, shelvesC: 0, sinkType: 'wycinany' });
+                    setShowOtherModal(false);
+                  }}
+                  style={{ width: '130px', padding: '15px', backgroundColor: '#fff', border: '2px solid #ddd', borderRadius: '12px', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', transition: '0.2s', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}
+                  onMouseEnter={(e) => e.currentTarget.style.borderColor = '#3498db'}
+                  onMouseLeave={(e) => e.currentTarget.style.borderColor = '#ddd'}
+                >
+                   <div style={{ width: '60px', height: '60px', pointerEvents: 'none' }}>
+                     <MiniaturaSzafki cab={{type: 'zlew', doorsC: 2, w: 0.6, h: 0.82, doorDirection: 'left'}} size={60} showHandles={true} />
+                   </div>
+                   <div style={{ fontSize: '12px', marginTop: '10px', fontWeight: 'bold', color: '#2c3e50', textAlign: 'center' }}>Szafka pod Zlew</div>
                 </button>
 
                 {/* Reszta modułów (Tymczasowy blok na kolejne) */}
