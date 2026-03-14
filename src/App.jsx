@@ -887,8 +887,8 @@ function CabinetHighlight({ cab, isFlipped, showWorktop, worktopDepth, nextIsFli
              <boxGeometry args={[cab.w + 0.02, h + 0.02, cab.d + 0.02]} />
            </mesh>
            {isCorner && (
-             <mesh material={mat} position={[(cab.cornerSide === 'prawy' ? 1 : -1) * (cab.w/2 - 0.5 + (cab.d2 || 0.5)/2), 0, (cab.w2 || 0.9)/2 - cab.d/2]}>
-               <boxGeometry args={[(cab.d2 || 0.5) + 0.02, h + 0.02, (cab.w2 || 0.9) - 0.5 + 0.02]} />
+             <mesh material={mat} position={[(cab.cornerSide === 'prawy' ? 1 : -1) * (cab.w/2 - 0.5 + (cab.d2 || 0.5)/2), 0, (cab.w2 || 0.9)/2 - 0.009]}>
+               <boxGeometry args={[(cab.d2 || 0.5) + 0.02, h + 0.02, (cab.w2 || 0.9) - 0.5 - 0.018 + 0.02]} />
              </mesh>
            )}
            {isOuterCorner && (
@@ -908,11 +908,11 @@ function CabinetHighlight({ cab, isFlipped, showWorktop, worktopDepth, nextIsFli
                    <boxGeometry args={[cab.w + (worktopDepth - 0.5 - 0.03) + 0.02, 0.038 + 0.02, worktopDepth + 0.02]} />
                  </mesh>
                  <mesh
-                   position={[(cab.cornerSide==='prawy'?1:-1) * (cab.w/2 - 0.5 - 0.03 + worktopDepth/2), 0, (cab.w2||0.9)/2 + 0.015]}
+                   position={[(cab.cornerSide==='prawy'?1:-1) * (cab.w/2 - 0.5 - 0.03 + worktopDepth/2), 0, (cab.w2||0.9)/2 + 0.015 - 0.009]}
                    rotation={[0, (cab.cornerSide === 'prawy' ? -Math.PI / 2 : Math.PI / 2) + (nextIsFlipped ? Math.PI : 0), 0]}
                    material={mat}
                  >
-                   <boxGeometry args={[(cab.w2||0.9) - 0.5 - 0.03 + 0.02, 0.038 + 0.02, worktopDepth + 0.02]} />
+                   <boxGeometry args={[(cab.w2||0.9) - 0.5 - 0.03 - 0.018 + 0.02, 0.038 + 0.02, worktopDepth + 0.02]} />
                  </mesh>
              </>
            </group>
@@ -1051,13 +1051,15 @@ function CabinetError({ cab, isFlipped, polyNodes, showWorktop, worktopDepth, ne
              <boxGeometry args={[cab.w, h, cab.d]} />
            </mesh>
            {isCorner && (
-             <mesh material={errorMat} position={[(cab.cornerSide === 'prawy' ? 1 : -1) * (cab.w/2 - 0.5 + (cab.d2 || 0.5)/2), 0, (cab.w2 || 0.9)/2]}>
-               <boxGeometry args={[(cab.d2 || 0.5), h, (cab.w2 || 0.9) - 0.5]} />
+             // POPRAWKA: Cofamy plecy wewnętrznego narożnika o 1cm (-0.005 na środku ciężkości, -0.01 z szerokości)
+             <mesh material={errorMat} position={[(cab.cornerSide === 'prawy' ? 1 : -1) * (cab.w/2 - 0.5 + (cab.d2 || 0.5)/2 - 0.005), 0, (cab.w2 || 0.9)/2 - 0.009]}>
+               <boxGeometry args={[(cab.d2 || 0.5) - 0.01, h, (cab.w2 || 0.9) - 0.5 - 0.018]} />
              </mesh>
            )}
            {isOuterCorner && (
-             <mesh material={errorMat} position={[(cab.cornerSide === 'prawy' ? 1 : -1) * (cab.w/2 - (cab.d2 || 0.5)/2), 0, -(cab.w2 || 0.9)/2]}>
-               <boxGeometry args={[(cab.d2 || 0.5), h, (cab.w2 || 0.9) - cab.d]} />
+             // POPRAWKA: Cofamy plecy zewnętrznego narożnika o 1cm (+0.005 na środku ciężkości, -0.01 z szerokości)
+             <mesh material={errorMat} position={[(cab.cornerSide === 'prawy' ? 1 : -1) * (cab.w/2 - (cab.d2 || 0.5)/2 + 0.005), 0, -(cab.w2 || 0.9)/2]}>
+               <boxGeometry args={[(cab.d2 || 0.5) - 0.01, h, (cab.w2 || 0.9) - cab.d]} />
              </mesh>
            )}
            </group>
@@ -1070,11 +1072,11 @@ function CabinetError({ cab, isFlipped, polyNodes, showWorktop, worktopDepth, ne
                <boxGeometry args={[cab.w + (worktopDepth - 0.5 - 0.03), 0.038, worktopDepth]} />
              </mesh>
              <mesh
-               position={[(cab.cornerSide==='prawy'?1:-1) * (cab.w/2 - 0.5 - 0.03 + worktopDepth/2), 0, (cab.w2||0.9)/2 + 0.015]}
+               position={[(cab.cornerSide==='prawy'?1:-1) * (cab.w/2 - 0.5 - 0.03 + worktopDepth/2), 0, (cab.w2||0.9)/2 + 0.015 - 0.009]}
                rotation={[0, (cab.cornerSide === 'prawy' ? -Math.PI / 2 : Math.PI / 2) + (nextIsFlipped ? Math.PI : 0), 0]}
                material={errorMat}
              >
-               <boxGeometry args={[(cab.w2||0.9) - 0.5 - 0.03, 0.038, worktopDepth]} />
+               <boxGeometry args={[(cab.w2||0.9) - 0.5 - 0.03 - 0.018, 0.038, worktopDepth]} />
              </mesh>
            </group>
          ) : isOuterCorner ? (
@@ -1384,7 +1386,8 @@ export default function App() {
              
              // Skanujemy OBA ramiona z buforem 2mm, to już jest bezpieczne
              addBoxZew(0, 0, cab.w, cab.d);
-             addBoxZew(sign * (cab.w / 2 - safeD2 / 2), -safeW2 / 2, safeD2, safeW2 - cab.d);
+             // POPRAWKA: Cofamy matematyczne skanery pleców o 1cm
+             addBoxZew(sign * (cab.w / 2 - safeD2 / 2 + 0.005), -safeW2 / 2, safeD2 - 0.01, safeW2 - cab.d);
 
              if (showWorktopGlobal && cab.hasWorktop) {
                 const w1_wt = cab.w - safeD2; const d1_wt = cab.d + 0.03;
@@ -1404,8 +1407,9 @@ export default function App() {
              
              if (cab.type === 'naroznik') {
                 const sign = cab.cornerSide === 'prawy' ? 1 : -1;
-                checkPoints.push(new THREE.Vector3(flipMult * sign * (hw - (cab.d2 || 0.5)), 0, flipMult * ((cab.w2 || 0.9) - hd)));
-                checkPoints.push(new THREE.Vector3(flipMult * sign * hw, 0, flipMult * ((cab.w2 || 0.9) - hd)));
+                // POPRAWKA: Cofamy matematyczny punkt na plecach ramienia 2 o 1cm (+ 0.01)
+                checkPoints.push(new THREE.Vector3(flipMult * sign * (hw - (cab.d2 || 0.5) + 0.01), 0, flipMult * ((cab.w2 || 0.9) - hd - 0.018)));
+                checkPoints.push(new THREE.Vector3(flipMult * sign * hw, 0, flipMult * ((cab.w2 || 0.9) - hd - 0.018)));
              }
 
              if (showWorktopGlobal && cab.hasWorktop && cab.type !== 'puste') {
@@ -1425,9 +1429,9 @@ export default function App() {
                       new THREE.Vector3(flipMult * left1, 0, flipMult * front1),
                       new THREE.Vector3(flipMult * left1, 0, flipMult * back1)
                    );
-                   const w2 = (cab.w2 || 0.9) - 0.53;
+                   const w2 = (cab.w2 || 0.9) - 0.53 - 0.018;
                    const cx2 = sign * (cab.w/2 - 0.53 + hwd);
-                   const cz2 = (cab.w2 || 0.9)/2 + 0.015;
+                   const cz2 = (cab.w2 || 0.9)/2 + 0.015 - 0.009;
                    const right2 = cx2 + hwd + 0.02;
                    const left2 = cx2 - hwd - 0.02;
                    const front2 = cz2 + w2/2 + 0.02;
@@ -2440,13 +2444,13 @@ export default function App() {
                                          />
                                        </mesh>
                                        <mesh 
-                                         position={[(cab.cornerSide==='prawy'?1:-1) * (cab.w/2 - 0.5 - 0.03 + worktopDepth/2), 0, (cab.w2||0.9)/2 + 0.015]}
+                                         position={[(cab.cornerSide==='prawy'?1:-1) * (cab.w/2 - 0.5 - 0.03 + worktopDepth/2), 0, (cab.w2||0.9)/2 + 0.015 - 0.009]}
                                          rotation={[0, (cab.cornerSide === 'prawy' ? -Math.PI / 2 : Math.PI / 2) + (nextIsFlipped ? Math.PI : 0), 0]}
                                        >
-                                         <boxGeometry args={[(cab.w2||0.9) - 0.5 - 0.03 + 0.001, 0.038, worktopDepth]} />
+                                         <boxGeometry args={[(cab.w2||0.9) - 0.5 - 0.03 - 0.018 + 0.001, 0.038, worktopDepth]} />
                                          <PłytaMaterial 
                                            dekor={DEKORY[worktopDecor]} 
-                                           w={(cab.w2||0.9) - 0.5 - 0.03} 
+                                           w={(cab.w2||0.9) - 0.5 - 0.03 - 0.018} 
                                            h={worktopDepth} 
                                            rotate 
                                            offsetX={nextIsFlipped ? -(item.dist + cab.w + 0.03) : (item.dist + cab.w + 0.03)} 
@@ -2556,8 +2560,8 @@ export default function App() {
                                 if (cab.type === 'naroznik') {
                                   const sign = cab.cornerSide === 'prawy' ? 1 : -1;
                                   strictPoints.push(
-                                      new THREE.Vector3(flipMult * (sign * (hw - (cab.d2 || 0.5))), 0, flipMult * ((cab.w2 || 0.9) - hd)),
-                                      new THREE.Vector3(flipMult * (sign * hw), 0, flipMult * ((cab.w2 || 0.9) - hd))
+                                      new THREE.Vector3(flipMult * (sign * (hw - (cab.d2 || 0.5))), 0, flipMult * ((cab.w2 || 0.9) - hd - 0.018)),
+                                      new THREE.Vector3(flipMult * (sign * hw), 0, flipMult * ((cab.w2 || 0.9) - hd - 0.018))
                                   );
                                 }
                                 
@@ -2595,9 +2599,9 @@ export default function App() {
                                         new THREE.Vector3(flipMult * (cx1 - w1/2), 0, flipMult * (cz1 + hwd)),
                                         new THREE.Vector3(flipMult * (cx1 - w1/2), 0, flipMult * (cz1 - hwd))
                                      );
-                                     const w2 = (cab.w2 || 0.9) - 0.53;
+                                     const w2 = (cab.w2 || 0.9) - 0.53 - 0.018;
                                      const cx2 = sign * (cab.w/2 - 0.53 + hwd);
-                                     const cz2 = (cab.w2 || 0.9)/2 + 0.015;
+                                     const cz2 = (cab.w2 || 0.9)/2 + 0.015 - 0.009;
                                      strictPoints.push(
                                         new THREE.Vector3(flipMult * (cx2 + hwd), 0, flipMult * (cz2 + w2/2)),
                                         new THREE.Vector3(flipMult * (cx2 + hwd), 0, flipMult * (cz2 - w2/2)),
